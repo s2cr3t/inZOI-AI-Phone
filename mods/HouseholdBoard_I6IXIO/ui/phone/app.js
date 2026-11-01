@@ -1253,10 +1253,11 @@
             }
             var infoP = member ? Promise.resolve(member)
                 : soft(call('entity.get_character_info', { entity_id: id }, 'entity_id'));
-            return Promise.all([infoP, soft(getEmotion(id)), soft(getStats(id)), totalUnread(id, members), momentsUnread(id)]).then(function (d) {
+            return Promise.all([infoP, soft(getEmotion(id)), soft(getStats(id)), totalUnread(id, members), momentsUnread(id),
+                loadAiSetup().then(null, function () { return ''; })]).then(function (d) {
                 return {
                     env: r[0], table: r[1], id: id, info: d[0], emotion: d[1], stats: d[2],
-                    unread: d[3], momentsUnread: d[4]
+                    unread: d[3], momentsUnread: d[4], aiSetup: d[5] || ''
                 };
             });
         });
@@ -1462,7 +1463,7 @@
     }
 
     // Greeting, clock, date and weather above the app icons.
-    function homeHero(env) {
+    function homeHero(env, aiSetupState) {
         var hero = node('div', 'ph-hero');
         hero.appendChild(node('div', 'ph-greet', greeting(env)));
         hero.appendChild(node('div', 'ph-clock', clockText(env)));
@@ -1471,7 +1472,23 @@
         if (env.weather) weatherParts.push(WEATHER[env.weather] || env.weather);
         if (typeof env.temperature === 'number') weatherParts.push(env.temperature + ' C');
         if (weatherParts.length) hero.appendChild(node('div', 'ph-weather', weatherParts.join('  ')));
+        if (aiSetupState) hero.appendChild(homeSetupBanner(aiSetupState));
         return hero;
+    }
+
+    // Under the clock while AI Phone Service is not installed or not running; opens the AI page.
+    function homeSetupBanner(state) {
+        var stopped = state === 'stopped';
+        var b = node('div', 'ph-setup' + (stopped ? ' stopped' : ''));
+        b.appendChild(node('div', 'ph-setup-title', stopped ? 'AI Phone Service is not running' : 'Finish setting up AI Phone'));
+        b.appendChild(node('div', 'ph-setup-sub', stopped ? 'AI 手机服务没有运行，点这里查看怎么启动' : '还差一步：安装 AI 手机服务，点这里查看'));
+        onTap(b, function (e) {
+            e.stopPropagation();
+            if (homeTapBlocked()) return;
+            soundPlay('tap');
+            open('ai');
+        }, { silent: true });
+        return b;
     }
 
     // What the app icons show; the icons are rebuilt (and laid out on pages again) only when it changes.
@@ -1512,6 +1529,8 @@
         var why = !v || !v.hero ? 'no view' : !canMorph() ? 'no morph' : shownScreenId !== 'home' ? 'shown ' + shownScreenId :
             v.wrap.parentNode !== el.screen ? 'view detached' : !v.hero.parentNode || !v.today.parentNode ? 'pages detached' : '';
         if (why) { traceNav('home rebuild: ' + why); return false; }
+        // The setup banner changes the hero's height, which the icon pages were cut to.
+        if (v.aiSetup !== (data.aiSetup || '')) { traceNav('home rebuild: ai setup ' + (data.aiSetup || 'done')); return false; }
         var key = homeTilesKey(data);
         if (v.tilesKey !== key) {
             if (v.tileIds !== homeTileIds() || !homePatchBadges(data)) { traceNav('home rebuild: apps changed'); return false; }
@@ -1520,7 +1539,7 @@
         traceNav('home patched');
         // Children only: the pages carry the sizes the layout gave them.
         morphChildren(v.today, homeTodayPage(data));
-        morphChildren(v.hero, homeHero(data.env));
+        morphChildren(v.hero, homeHero(data.env, data.aiSetup));
         return true;
     }
 
@@ -1536,7 +1555,7 @@
         var today = homeTodayPage(data);
 
         var main = node('div', 'hs-page');
-        var hero = homeHero(env);
+        var hero = homeHero(env, data.aiSetup);
         main.appendChild(hero);
 
         var tiles = [];
@@ -1554,7 +1573,8 @@
         wrap.appendChild(dock);
 
         homeView = { wrap: wrap, viewport: viewport, track: track, dots: dots, today: today, main: main,
-            pages: [today, main], tiles: tiles, w: 0, h: 0, hero: hero, tilesKey: homeTilesKey(data), tileIds: homeTileIds() };
+            pages: [today, main], tiles: tiles, w: 0, h: 0, hero: hero, tilesKey: homeTilesKey(data), tileIds: homeTileIds(),
+            aiSetup: data.aiSetup || '' };
         homeBindGestures(homeView);
         return wrap;
     }
@@ -7221,6 +7241,7 @@
         ]).then(function (r) {
             var s = r[0] && typeof r[0] === 'object' ? r[0] : null;
             var d = r[1] && typeof r[1] === 'object' ? r[1] : null;
+            aiNoteSetup(s, d);
             if (!d || typeof d.heartbeat !== 'number') return s;
             if (Date.now() - d.heartbeat > AI_STALE_MS) return s;
             if (s && typeof s.heartbeat === 'number' && Date.now() - s.heartbeat <= AI_STALE_MS) return s;
@@ -7247,6 +7268,112 @@
     var AI_NO_GUARDIAN = 'Open "inZOI AI Phone" from the Windows Start menu, then try again. Only the reply service is running on this PC.';
     function aiTakesRequests(s) {
         return aiAlive(s) && !s.noGuardian;
+    }
+
+    // ------------------------------------------------------------------
+    // Setting up: a phone installed without AI Phone Service (from a mod site, say) says how to
+    // get it. service.cfg and daemon.cfg exist once the service has run on this PC; a phone that
+    // has never seen either is told to install it, one that has is told to start it.
+    // A read that fails looks the same as a missing file, so neither is said before the files
+    // have been missing for AI_SETUP_MISSES reads over AI_SETUP_WAIT_MS, and a phone that has
+    // seen the service this session never calls it missing again.
+    // ------------------------------------------------------------------
+    var AI_DOWNLOAD_URL = 'https://github.com/s2cr3t/inZOI-AI-Phone/releases/latest';
+    var AI_SETUP_MISSES = 3;
+    var AI_SETUP_WAIT_MS = 20000;
+    var aiSetup = { state: '', seen: false, misses: 0, since: 0 };
+    var aiCopyResult = null;
+    var aiCopying = false;
+
+    function aiNoteSetup(service, daemon) {
+        if (service || daemon) aiSetup.seen = true;
+        if (aiAlive(service) || aiAlive(daemon)) {
+            aiSetup.state = '';
+            aiSetup.misses = 0;
+            aiSetup.since = 0;
+            aiCopyResult = null;
+            return;
+        }
+        aiSetup.misses++;
+        if (!aiSetup.since) aiSetup.since = Date.now();
+        if (aiSetup.state || (aiSetup.misses >= AI_SETUP_MISSES && Date.now() - aiSetup.since >= AI_SETUP_WAIT_MS)) {
+            aiSetup.state = aiSetup.seen ? 'stopped' : 'missing';
+        }
+    }
+
+    // For the home screen: '' while the service runs (or before it is known not to).
+    function loadAiSetup() {
+        return cachedRead('aisetup', 4000, function () {
+            return loadAiService().then(function () { return aiSetup.state; }, function () { return aiSetup.state; });
+        });
+    }
+
+    function aiCopyLink() {
+        if (aiCopying) return;
+        aiCopying = true;
+        aiCopyResult = null;
+        call('clipboard.copy', { text: AI_DOWNLOAD_URL }).then(function () {
+            aiCopyResult = { ok: true, text: 'Link copied. Paste it into your browser. / 已复制，粘贴到浏览器即可。' };
+        }, function () {
+            aiCopyResult = { ok: false, text: 'Could not copy here. Type the address above into your browser. / 复制失败，请在浏览器里输入上面的地址。' };
+        }).then(function () {
+            aiCopying = false;
+            aiRerender();
+        });
+    }
+
+    // The AI page is opened on purpose, so it does not wait out the misses: a service seen on
+    // this PC is one that is not running, anything else is one not installed.
+    function aiSetupStopped(s) {
+        return aiSetup.state ? aiSetup.state === 'stopped' : !!(s || aiSetup.seen);
+    }
+
+    function aiZh(text) { return node('div', 'ai-detail ai-zh', text); }
+
+    // The status card and the download steps for a phone without a running service.
+    function aiSetupCards(wrap, stopped) {
+        var status = card('AI PHONE SERVICE');
+        if (stopped) {
+            status.appendChild(node('div', 'ai-state err', 'Not running'));
+            status.appendChild(node('div', 'ai-detail', 'AI Phone Service is not running on this PC. Open "inZOI AI Phone" from the Windows Start menu to start it. After that it starts by itself whenever you sign in to Windows.'));
+            status.appendChild(aiZh('AI 手机服务没有在运行。请从 Windows 开始菜单打开“inZOI AI 手机”。之后每次登录 Windows 都会自动启动。'));
+            status.appendChild(node('div', 'ai-hint', 'Uninstalled it? Get it again below. / 已经卸载了？在下面重新下载。'));
+        } else {
+            status.appendChild(node('div', 'ai-state warn', 'One more step'));
+            status.appendChild(node('div', 'ai-detail', 'The phone is installed, but AI Phone Service, which writes your family\'s replies, is not on this PC yet. It is one free download.'));
+            status.appendChild(aiZh('手机已经装好，但电脑上还没有负责 AI 回复的 AI 手机服务。免费下载安装一次就好。'));
+        }
+        wrap.appendChild(status);
+
+        var get = card(stopped ? 'DOWNLOAD AGAIN' : 'GET AI PHONE SERVICE');
+        var copyRow = node('div', 'ph-btns ai-step-btns');
+        var copy = aiButton(aiCopying ? 'Copying...' : 'Copy link', 'on', !aiCopying, aiCopyLink);
+        copy.className += ' last';
+        copyRow.appendChild(copy);
+        var first = [copyRow, node('div', 'ai-url', AI_DOWNLOAD_URL.replace(/^https:\/\//, ''))];
+        if (aiCopyResult) first.push(node('div', 'ai-result ' + (aiCopyResult.ok ? 'ok' : 'err'), aiCopyResult.text));
+        get.appendChild(aiSetupStep('1', 'Copy the download link.', '复制下载地址。', first));
+        get.appendChild(aiSetupStep('2', 'Press Alt+Tab to leave the game, paste the link into your browser, then download and run inZOI-AI-Phone-Setup.exe.',
+            '按 Alt+Tab 切出游戏，把地址粘贴到浏览器，下载并运行 inZOI-AI-Phone-Setup.exe。'));
+        get.appendChild(aiSetupStep('3', 'Leave "Start inZOI AI Phone Service now" ticked on the last page. Back in the game this page changes by itself; no restart needed.',
+            '安装最后一页保持勾选“立即启动 inZOI AI 手机服务”。回到游戏后这一页会自动更新，不用重启游戏。'));
+        wrap.appendChild(get);
+
+        var after = card('THEN');
+        after.appendChild(node('div', 'ai-detail', 'Pick an AI provider such as DeepSeek on this page and add your own API key. AI Phone is free; the provider bills your own account.'));
+        after.appendChild(aiZh('在这一页选择 AI 服务商（如 DeepSeek），填入你自己的 API 密钥。AI 手机本身免费，AI 调用费用由你自己的账号承担。'));
+        wrap.appendChild(after);
+    }
+
+    function aiSetupStep(n, en, zh, extras) {
+        var row = node('div', 'ai-step');
+        row.appendChild(node('div', 'ai-step-n', n));
+        var text = node('div', 'ai-step-text');
+        text.appendChild(node('div', 'ai-detail', en));
+        text.appendChild(aiZh(zh));
+        (extras || []).forEach(function (x) { text.appendChild(x); });
+        row.appendChild(text);
+        return row;
     }
 
     function aiProviders() {
@@ -7498,7 +7625,9 @@
 
     function aiRenderKey(data) {
         var s = data.service;
-        if (!aiAlive(s)) return 'dead|' + (s && s.state);
+        if (!aiAlive(s)) {
+            return 'dead|' + aiSetupStopped(s) + '|' + aiCopying + '|' + (aiCopyResult ? aiCopyResult.ok + aiCopyResult.text : '');
+        }
         var keys = [];
         aiProviders().forEach(function (p) {
             var k = aiKeyOf(p.id);
@@ -7692,15 +7821,11 @@
         wrap.appendChild(subHeader('ai'));
         aiRenderedKey = aiRenderKey(data);
 
-        var status = card('AI PHONE SERVICE');
         if (!aiAlive(s)) {
-            status.appendChild(node('div', 'ai-state err', 'Not running'));
-            status.appendChild(node('div', 'ai-detail', s && s.state === 'stopped'
-                ? 'AI Phone Service was closed on this PC. Open "inZOI AI Phone" (inZOI AI 手机) from the Windows Start menu to start it again.'
-                : 'AI Phone Service is not running on this PC. Install inZOI AI Phone, or open "inZOI AI Phone" (inZOI AI 手机) from the Windows Start menu. After that it starts by itself whenever you sign in to Windows.'));
-            wrap.appendChild(status);
+            aiSetupCards(wrap, aiSetupStopped(s));
             return wrap;
         }
+        var status = card('AI PHONE SERVICE');
         aiEnsureDraft();
         var d = aiDraft;
         var view = aiStateView(s);
@@ -11209,7 +11334,9 @@
             dccar: { load: loadDreamCar, render: renderDreamCarCar, title: 'Vehicle', parent: 'dreamcar' },
             dcgarage: { load: loadDreamCar, render: renderDreamCarGarage, title: 'Garage' }
         } });
-    registerApp({ id: 'ai', label: 'AI', cls: 'ic-ai', category: 'Utilities', dock: true, version: '2.49',
+    registerApp({ id: 'ai', label: 'AI', cls: 'ic-ai', category: 'Utilities', dock: true, version: '2.51',
+        badge: function (data) { return data.aiSetup ? 1 : 0; },
+        whatsNew: 'Shows how to get AI Phone Service when this PC does not have it yet, with the download link a tap away.',
         desc: 'The service behind your family', subtitle: 'The service behind your family',
         about: 'Switch the AI phone service on or off, choose a provider and model, and test the connection.',
         screens: { ai: { load: loadAi, render: renderAi } } });
@@ -11740,6 +11867,7 @@
         aiRenderedKey = '';
         if (from === 'ai' && screenId !== 'ai') aiKeyDraft = '';
         if (screenId === 'ai' && from !== 'ai') {
+            aiCopyResult = null;
             aiDraft = null;
             aiKeyDraft = '';
             aiConfirmForget = '';

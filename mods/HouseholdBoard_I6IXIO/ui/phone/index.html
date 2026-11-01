@@ -1065,6 +1065,22 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 .ai-line { margin-top: 8px; font-size: 15px; color: #f5f5f7; }
 .ai-hint { margin-top: 8px; font-size: 12px; line-height: 1.4; color: #8e8e93; }
 .ai-row { display: flex; align-items: center; margin-top: 10px; }
+.ai-zh { margin-top: 2px; color: #aeaeb2; }
+.ai-step { display: flex; align-items: flex-start; margin-top: 14px; }
+.ai-step-n { flex-shrink: 0; width: 24px; height: 24px; margin-right: 10px; border-radius: 12px; background: #0A84FF;
+             color: #ffffff; font-size: 13px; font-weight: bold; line-height: 24px; text-align: center; }
+.ai-step-text { flex: 1; min-width: 0; }
+.ai-step-text .ai-detail:first-child { margin-top: 2px; }
+.ai-step-btns { margin-top: 10px; }
+.ai-url { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: #2c2c2e; font-size: 13px; color: #f5f5f7;
+          word-wrap: break-word; overflow-wrap: break-word; -webkit-user-select: text; user-select: text; }
+
+/* ---------- home: AI Phone Service not installed or not running ---------- */
+.ph-setup { margin-top: 14px; padding: 11px 14px; border-radius: 14px; background: rgba(255, 159, 10, 0.94); color: #1c1c1e; cursor: pointer; }
+.ph-setup.stopped { background: rgba(255, 69, 58, 0.94); color: #ffffff; }
+.ph-setup:active { opacity: 0.85; }
+.ph-setup-title { font-size: 15px; font-weight: bold; }
+.ph-setup-sub { margin-top: 2px; font-size: 13px; }
 
 /* ---------- settings: sounds ---------- */
 /* The picture is black and sits inside the black island. The player only decodes a video
@@ -1652,6 +1668,8 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 #app-root.theme-light .ai-detail.st-err { color: #d70015; }
 #app-root.theme-light .ai-line { color: #1c1c1e; }
 #app-root.theme-light .ai-hint { color: #6e6e73; }
+#app-root.theme-light .ai-zh { color: #6e6e73; }
+#app-root.theme-light .ai-url { background: #f2f2f7; color: #1c1c1e; }
 #app-root.theme-light .ai-input { border-color: #d1d1d6; background: #f2f2f7; color: #1c1c1e; }
 #app-root.theme-light .ai-input:focus { border-color: #aeaeb2; }
 #app-root.theme-light .ai-result { color: #6e6e73; }
@@ -2028,7 +2046,7 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
      ==================================================================== -->
 <script src="coui://inzoi/cohtml.js"></script>
 <script src="coui://inzoi/mod/inzoi-sdk.js"></script>
-<script src="window.js?v=2.51.2"></script>
-<script src="app.js?v=2.51.2"></script>
+<script src="window.js?v=2.52.0"></script>
+<script src="app.js?v=2.52.0"></script>
 </body>
 </html>
