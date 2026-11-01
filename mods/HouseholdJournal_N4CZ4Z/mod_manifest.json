@@ -1,0 +1,25 @@
+{
+	"ProjectName": "HouseholdJournal_N4CZ4Z",
+	"FriendlyName": "HouseholdJournal",
+	"Description": "",
+	"Author": "",
+	"Version": "20261013.16166.W.334313",
+	"Url": "",
+	"Dependencies": [],
+	"Assets": [],
+	"Maps": [],
+	"NonAssets": [
+		"/lua/.luarc.json",
+		"/lua/AGENTS.md",
+		"/lua/lua_manifest.json",
+		"/lua/B2/Main.lua",
+		"/lua/B2/Zoi/BuffReceiver.lua",
+		"/lua/B1/Main.lua",
+		"/lua/B2/Zoi/FreelanceServer.lua",
+		"/lua/B2/Zoi/MessageServer.lua",
+		"/lua/B2/Zoi/PreferenceSetter.lua",
+		"/lua/B1/Schedules.lua",
+		"/lua/B1/Zoi/ActorSeen.lua"
+	],
+	"FileChecksums": []
+}

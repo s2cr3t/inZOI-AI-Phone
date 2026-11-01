@@ -1,0 +1,16 @@
+# Built by tools/build-installer.js and tools/build-test-kit.js
+build/
+bin/
+
+# This PC's runtime state, chat history and logs
+data/
+logs/
+*.log
+
+# This PC's settings and the AI provider key
+config.json
+secrets.json
+
+node_modules/
+*.bak
+*.bak-*

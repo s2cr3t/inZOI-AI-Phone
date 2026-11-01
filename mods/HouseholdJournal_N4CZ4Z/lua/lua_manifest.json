@@ -1,0 +1,18 @@
+{
+	"settings": {
+		"auto_require": false
+	},
+	"bindings": {
+		"B2": [
+			{ "type": "Zoi", "key": "*", "script": "Zoi.BuffReceiver" },
+			{ "type": "Zoi", "key": "*", "script": "Zoi.MealServer" },
+			{ "type": "Zoi", "key": "*", "script": "Zoi.FreelanceServer" },
+			{ "type": "Zoi", "key": "*", "script": "Zoi.MessageServer" },
+			{ "type": "Zoi", "key": "*", "script": "Zoi.PreferenceSetter" },
+			{ "type": "Zoi", "key": "*", "script": "Zoi.VehicleShop" }
+		],
+		"B1": [
+			{ "type": "Zoi", "key": "*", "script": "Zoi.ActorSeen" }
+		]
+	}
+}

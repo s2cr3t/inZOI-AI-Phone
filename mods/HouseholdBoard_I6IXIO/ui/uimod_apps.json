@@ -1,0 +1,6 @@
+{
+  "apps": [
+    { "name": "board", "enabled": true },
+    { "name": "phone", "enabled": true }
+  ]
+}

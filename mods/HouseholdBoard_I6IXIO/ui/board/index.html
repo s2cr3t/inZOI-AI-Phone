@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>board</title>
+<link rel="stylesheet" href="coui://inzoi/mod/inzoi-fonts.css">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+/* html/body MUST keep 'background: transparent' (game shows through; clicks outside the UI
+   reach the game) and 'overflow: hidden'. NEVER set 'pointer-events: none' on html/body --
+   it breaks inzoi.view.hover() / setHover() and leaks wheel/click input to the game camera. */
+html, body { width: 100%; height: 100%; background: transparent; overflow: hidden;
+             font-family: var(--inzoi-font-ui); font-size: 22px; color: #f4f4f6; }
+button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
+
+#app-root { position: absolute; top: 100px; left: 100px; width: 500px; height: 680px; min-width: 460px;
+            display: flex; flex-direction: column; overflow: hidden;
+            background: rgba(24, 24, 28, 0.74);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 18px;
+            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38); }
+
+#title-bar { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+             padding: 14px 14px 4px 22px; cursor: move;
+             user-select: none; -webkit-user-select: none; }
+#title-text { font-size: 16px; font-weight: bold; letter-spacing: 3px; color: rgba(255, 255, 255, 0.5); }
+#title-buttons { display: flex; align-items: center; }
+#minimize-btn, #close-btn {
+    display: inline-block; width: 30px; height: 30px; margin-left: 8px;
+    line-height: 28px; text-align: center; border-radius: 15px;
+    font-size: 15px; font-weight: bold; font-family: var(--inzoi-font-mono, Consolas, monospace);
+    color: rgba(255, 255, 255, 0.75); background: rgba(255, 255, 255, 0.08); cursor: pointer;
+    user-select: none; -webkit-user-select: none; }
+#minimize-btn:hover { background: rgba(255, 255, 255, 0.2); }
+#close-btn:hover { background: rgba(255, 120, 110, 0.35); }
+
+#content { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain;
+           padding: 6px 22px 18px 22px; }
+
+.hb-head { display: flex; align-items: center; }
+.hb-clock { font-size: 56px; line-height: 1; font-weight: bold; color: #ffffff; }
+.hb-when { flex: 1; min-width: 0; margin-left: 18px; }
+.hb-day { font-size: 21px; color: #ffffff; }
+/* cohtml lays inline spans out at min-content width, so every dotted row is a flex row. */
+.hb-meta { display: flex; align-items: center; margin-top: 4px; font-size: 17px; color: rgba(255, 255, 255, 0.55); }
+.hb-meta span, .hb-job span, .hb-tag span { flex-shrink: 0; white-space: nowrap; }
+.hb-dot { display: block; flex-shrink: 0; width: 4px; height: 4px; margin: 0 9px; border-radius: 2px;
+          background: rgba(255, 255, 255, 0.35); }
+
+.hb-label { margin: 20px 0 10px 0; font-size: 14px; letter-spacing: 3px; color: rgba(255, 255, 255, 0.42); }
+
+.hb-person { margin-bottom: 12px; padding: 14px 16px 12px 14px; border-radius: 14px;
+             background: rgba(255, 255, 255, 0.06); }
+.hb-top { display: flex; align-items: center; }
+.hb-avatar { flex-shrink: 0; width: 50px; height: 50px; margin-right: 14px; border-radius: 25px;
+             text-align: center; line-height: 50px; font-size: 23px; font-weight: bold; color: #1b1b20; }
+.hb-who { flex: 1; min-width: 0; }
+.hb-name { font-size: 25px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hb-job { display: flex; align-items: center; margin-top: 2px; overflow: hidden;
+          font-size: 17px; color: rgba(255, 255, 255, 0.55); }
+.hb-pill { flex-shrink: 0; margin-left: 10px; padding: 5px 12px; border-radius: 14px;
+           font-size: 15px; font-weight: bold; white-space: nowrap; }
+.pill-work { background: rgba(122, 222, 176, 0.18); color: #a6f1cf; }
+.pill-move { background: rgba(255, 196, 110, 0.18); color: #ffd79a; }
+.pill-late { background: rgba(255, 128, 118, 0.2); color: #ffb2a9; }
+.pill-idle { background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.72); }
+
+.hb-shift { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+.hb-hours { flex-shrink: 0; font-size: 23px; color: #ffffff; white-space: nowrap; }
+.hb-tag { display: flex; align-items: center; flex-shrink: 0; margin-left: 10px;
+          font-size: 15px; color: rgba(255, 255, 255, 0.5); }
+.hb-empty { font-size: 16px; color: rgba(255, 255, 255, 0.5); }
+.hb-track { position: relative; height: 8px; margin-top: 10px; border-radius: 4px;
+            background: rgba(255, 255, 255, 0.1); }
+.hb-seg { position: absolute; top: 0; height: 8px; border-radius: 4px; }
+.hb-now { position: absolute; top: -5px; width: 2px; height: 18px; margin-left: -1px;
+          border-radius: 1px; background: #ffffff; }
+.hb-ticks { position: relative; height: 16px; margin-top: 5px; font-size: 12px; color: rgba(255, 255, 255, 0.34); }
+.hb-ticks span { position: absolute; top: 0; width: 50px; margin-left: -25px; text-align: center; }
+
+.hb-others { display: flex; flex-wrap: wrap; }
+.hb-chip { display: flex; align-items: center; margin: 0 10px 10px 0; padding: 6px 14px 6px 6px;
+           border-radius: 22px; background: rgba(255, 255, 255, 0.06); }
+.hb-chip .hb-avatar { width: 34px; height: 34px; margin-right: 10px; border-radius: 17px;
+                      line-height: 34px; font-size: 16px; }
+.hb-chip-name { font-size: 18px; color: #ffffff; }
+.hb-chip-role { margin-left: 8px; font-size: 15px; color: rgba(255, 255, 255, 0.5); }
+
+.hb-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.hb-status { flex: 1; min-width: 0; margin-right: 12px; font-size: 15px; color: rgba(255, 255, 255, 0.45);
+             word-wrap: break-word; overflow-wrap: break-word; }
+.hb-status.err { color: #ffb2a9; }
+#hb-refresh { flex-shrink: 0; padding: 8px 20px; border: 0; border-radius: 18px;
+              background: rgba(255, 255, 255, 0.14); color: #ffffff;
+              font-size: 17px; font-weight: bold; cursor: pointer; }
+#hb-refresh:hover { background: rgba(255, 255, 255, 0.24); }
+
+#resize-handle { position: absolute; bottom: 4px; right: 4px; width: 18px; height: 18px; cursor: nwse-resize; opacity: 0.35;
+                 background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,0.6) 41%, rgba(255,255,255,0.6) 55%, transparent 56%, transparent 68%, rgba(255,255,255,0.5) 69%, rgba(255,255,255,0.5) 80%, transparent 81%); }
+#resize-handle:hover { opacity: 0.8; }
+</style>
+</head>
+<body>
+<div id="app-root">
+  <div id="title-bar">
+    <span id="title-text">HOUSEHOLD</span>
+    <div id="title-buttons">
+      <span id="minimize-btn">_</span>
+      <span id="close-btn">X</span>
+    </div>
+  </div>
+  <div id="content">
+    <div class="hb-head">
+      <div class="hb-clock" id="hb-clock">--:--</div>
+      <div class="hb-when">
+        <div class="hb-day" id="hb-day"></div>
+        <div class="hb-meta" id="hb-meta"></div>
+      </div>
+    </div>
+    <div class="hb-label">WORK SCHEDULE</div>
+    <div id="hb-workers"></div>
+    <div class="hb-label" id="hb-others-label">AT HOME</div>
+    <div class="hb-others" id="hb-others"></div>
+    <div class="hb-foot">
+      <div class="hb-status" id="hb-status">Loading...</div>
+      <button id="hb-refresh" type="button">Refresh</button>
+    </div>
+  </div>
+</div>
+<!-- ===================================================================
+     REQUIRED SCRIPTS -- DO NOT REMOVE OR REORDER.
+     If you rewrite this file, these four <script> tags MUST stay, in order:
+       1. coui://inzoi/cohtml.js        -> engine (game bridge; input forwarding)
+       2. coui://inzoi/mod/inzoi-sdk.js -> inzoi.* (view.hover, cli, saveState...)
+       3. window.js                     -> scaffold window mgr; defines the wf global
+       4. app.js                        -> your mod logic (uses wf)
+     Dropping #1 or #2 silently breaks input/hover: the game stops receiving
+     clicks outside the UI and inzoi.* APIs throw. window.js logs a loud error
+     if either is missing (see its dependency guard).
+     ==================================================================== -->
+<script src="coui://inzoi/cohtml.js"></script>
+<script src="coui://inzoi/mod/inzoi-sdk.js"></script>
+<script src="window.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
