@@ -1,17 +1,18 @@
 {
 	"FileVersion": 3,
-	"Version": 1,
-	"VersionName": "1.0.0",
-	"FriendlyName": "HouseholdJournal",
-	"Description": "",
+	"Version": 25200,
+	"VersionName": "2.52.0",
+	"FriendlyName": "inZOI AI Phone - Game Link",
+	"Description": "Game-side helper for inZOI AI Phone: lets the phone read the household and carry out what Zois agree to in chat.",
 	"Category": "UGC",
-	"CreatedBy": "",
-	"CreatedByURL": "",
-	"DocsURL": "",
-	"MarketplaceURL": "",
-	"SupportURL": "",
+	"CreatedBy": "s2cr3t",
+	"CreatedByURL": "https://github.com/s2cr3t",
+	"DocsURL": "https://github.com/s2cr3t/inZOI-AI-Phone#readme",
+	"MarketplaceURL": "https://legacy.curseforge.com/inzoi/script-mod/inzoi-ai-phone-game-link",
+	"SupportURL": "https://github.com/s2cr3t/inZOI-AI-Phone/issues",
 	"CanContainContent": false,
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
-	"Installed": false
+	"Installed": false,
+	"CfUgcId": 1778462
 }

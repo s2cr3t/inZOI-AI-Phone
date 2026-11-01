@@ -1,17 +1,18 @@
 {
 	"FileVersion": 3,
-	"Version": 1,
-	"VersionName": "1.0.0",
-	"FriendlyName": "RoomLights",
-	"Description": "家里有人的房间开灯，没人的房间关灯。",
+	"Version": 25200,
+	"VersionName": "2.52.0",
+	"FriendlyName": "Room Lights",
+	"Description": "Lights turn on in rooms where someone is home and turn off in empty rooms.",
 	"Category": "UGC",
-	"CreatedBy": "",
-	"CreatedByURL": "",
-	"DocsURL": "",
-	"MarketplaceURL": "",
-	"SupportURL": "",
+	"CreatedBy": "s2cr3t",
+	"CreatedByURL": "https://github.com/s2cr3t",
+	"DocsURL": "https://github.com/s2cr3t/inZOI-AI-Phone#readme",
+	"MarketplaceURL": "https://legacy.curseforge.com/inzoi/script-mod/room-lights",
+	"SupportURL": "https://github.com/s2cr3t/inZOI-AI-Phone/issues",
 	"CanContainContent": false,
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
-	"Installed": false
+	"Installed": false,
+	"CfUgcId": 1778468
 }

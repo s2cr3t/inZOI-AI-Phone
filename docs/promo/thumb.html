@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>inZOI AI Phone thumbnail</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 800px; height: 800px; overflow: hidden; }
+    body {
+        font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+        background: #2a2330 url("promo-bg.jpg") 62% center / cover no-repeat;
+        position: relative; color: #fff;
+    }
+    .shade { position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+        background: linear-gradient(180deg, rgba(22, 16, 28, .25) 0%, rgba(22, 16, 28, .4) 55%, rgba(22, 16, 28, .9) 100%); }
+    .chat { position: absolute; top: 44px; left: 44px; right: 44px; }
+    .row { display: flex; align-items: flex-end; margin-bottom: 22px; }
+    .row.me { justify-content: flex-end; }
+    .av { width: 76px; height: 76px; border-radius: 50%; flex-shrink: 0; margin-right: 16px;
+        display: flex; align-items: center; justify-content: center; font-size: 36px; font-weight: 700;
+        background: linear-gradient(135deg, #f7a08a, #e46a7e); box-shadow: 0 8px 20px rgba(0, 0, 0, .35); }
+    .b { max-width: 520px; padding: 20px 30px; border-radius: 40px; font-size: 40px; font-weight: 600; line-height: 1.35;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, .35); }
+    .in .b { background: #fff; color: #1c1c1e; border-bottom-left-radius: 12px; }
+    .me .b { background: #0a7cff; color: #fff; border-bottom-right-radius: 12px; }
+    .title { position: absolute; left: 0; right: 0; bottom: 58px; text-align: center; }
+    .title h1 { font-family: "Segoe UI", sans-serif; font-size: 92px; font-weight: 700; letter-spacing: -1px; line-height: 1; }
+    .title h2 { font-size: 46px; font-weight: 700; margin-top: 16px; letter-spacing: 4px; color: #ffc4cf; }
+</style>
+</head>
+<body>
+<div class="shade"></div>
+<div class="chat">
+    <div class="row in"><div class="av">妈</div><p class="b">下班了没？给你点个外卖</p></div>
+    <div class="row me"><p class="b">想吃拉面！</p></div>
+    <div class="row in"><div class="av">妈</div><p class="b">好嘞，已经下单了～</p></div>
+</div>
+<div class="title">
+    <h1 id="t1">inZOI AI Phone</h1>
+    <h2 id="t2">AI 手机 · 家人真的会回消息</h2>
+</div>
+<script>
+    var variants = {
+        link: { t1: 'AI Phone · Game Link', t2: 'AI 手机游戏连接组件 · 必装', size: '72px' },
+        lights: { t1: 'Room Lights', t2: '有人开灯 · 没人关灯', size: '104px',
+            chat: [['in', '妈', '客厅灯怎么自己亮了？'], ['me', '', '我刚进门呀'], ['in', '妈', '走的时候它也会自己关～']] }
+    };
+    var v = variants[location.hash.slice(1)];
+    if (v) {
+        document.getElementById('t1').textContent = v.t1;
+        document.getElementById('t1').style.fontSize = v.size;
+        document.getElementById('t2').textContent = v.t2;
+        if (v.chat) {
+            var box = document.querySelector('.chat');
+            box.innerHTML = '';
+            v.chat.forEach(function (m) {
+                var row = document.createElement('div');
+                row.className = 'row ' + m[0];
+                if (m[1]) { var av = document.createElement('div'); av.className = 'av'; av.textContent = m[1]; row.appendChild(av); }
+                var b = document.createElement('p'); b.className = 'b'; b.textContent = m[2]; row.appendChild(b);
+                box.appendChild(row);
+            });
+        }
+    }
+</script>
+</body>
+</html>

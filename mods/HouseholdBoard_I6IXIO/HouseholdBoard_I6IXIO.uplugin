@@ -1,17 +1,18 @@
 {
 	"FileVersion": 3,
-	"Version": 1,
-	"VersionName": "1.0.0",
-	"FriendlyName": "HouseholdBoard",
-	"Description": "board [game_mode], phone [game_mode]",
+	"Version": 25200,
+	"VersionName": "2.52.0",
+	"FriendlyName": "inZOI AI Phone",
+	"Description": "A smartphone for your Zois: family and friends text back with AI. Needs AI Phone Service: https://github.com/s2cr3t/inZOI-AI-Phone/releases/latest",
 	"Category": "UGC",
-	"CreatedBy": "",
-	"CreatedByURL": "",
-	"DocsURL": "",
-	"MarketplaceURL": "",
-	"SupportURL": "",
+	"CreatedBy": "s2cr3t",
+	"CreatedByURL": "https://github.com/s2cr3t",
+	"DocsURL": "https://github.com/s2cr3t/inZOI-AI-Phone#readme",
+	"MarketplaceURL": "https://legacy.curseforge.com/inzoi/script-mod/inzoi-ai-phone",
+	"SupportURL": "https://github.com/s2cr3t/inZOI-AI-Phone/issues",
 	"CanContainContent": false,
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
-	"Installed": false
+	"Installed": false,
+	"CfUgcId": 1778467
 }
