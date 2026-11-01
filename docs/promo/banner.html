@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>inZOI AI Phone banner</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 1600px; height: 900px; overflow: hidden; }
+    body {
+        font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+        background: #2a2330 url("promo-bg.jpg") center / cover no-repeat;
+        position: relative;
+        color: #fff;
+    }
+    .shade {
+        position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+        background: linear-gradient(90deg, rgba(22, 16, 28, .78) 0%, rgba(22, 16, 28, .55) 38%, rgba(22, 16, 28, 0) 62%);
+    }
+
+    /* Title block */
+    .copy { position: absolute; left: 110px; top: 150px; width: 720px; }
+    .eyebrow {
+        display: inline-block; font-size: 20px; letter-spacing: 3px; font-weight: 600;
+        color: #ffd9c7; padding: 7px 16px; border: 1px solid rgba(255, 217, 199, .45); border-radius: 999px;
+        background: rgba(255, 255, 255, .06);
+    }
+    h1 { font-family: "Segoe UI", sans-serif; font-weight: 700; font-size: 92px; line-height: 1.02; letter-spacing: -2px; margin-top: 28px; }
+    h2 { font-size: 66px; font-weight: 700; margin-top: 8px; letter-spacing: 4px;
+        background: linear-gradient(90deg, #ffe3d3, #ffb3c2); -webkit-background-clip: text; color: transparent; }
+    .tag { font-size: 30px; margin-top: 30px; color: #f4ecf2; }
+    .tag-en { font-family: "Segoe UI", sans-serif; font-size: 24px; margin-top: 8px; color: rgba(244, 236, 242, .72); }
+    .chips { display: flex; flex-wrap: wrap; margin-top: 38px; width: 640px; }
+    .chip {
+        font-size: 21px; padding: 9px 18px; margin: 0 12px 12px 0; border-radius: 999px;
+        background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .22); color: #fff;
+    }
+    .foot { position: absolute; left: 110px; bottom: 56px; font-size: 20px; line-height: 1.7; color: rgba(255, 255, 255, .7); letter-spacing: .5px; }
+    .foot b { color: #fff; font-weight: 600; }
+
+    /* Phone */
+    .stage { position: absolute; right: 150px; top: 70px; width: 420px; height: 800px; perspective: 1800px; }
+    .phone {
+        width: 400px; height: 800px; border-radius: 62px; background: #111; padding: 14px;
+        transform: rotateY(-16deg) rotateZ(2deg);
+        box-shadow: 0 50px 90px rgba(0, 0, 0, .55), 0 0 0 2px #3a3a3e inset, 0 0 0 3px #555 ;
+    }
+    .screen { width: 100%; height: 100%; border-radius: 50px; overflow: hidden; background: #f6f3ef; position: relative; color: #1c1c1e; }
+    .island { position: absolute; top: 14px; left: 50%; width: 118px; height: 34px; margin-left: -59px; background: #000; border-radius: 20px; z-index: 2; }
+    .status { height: 58px; display: flex; align-items: center; justify-content: space-between; padding: 6px 30px 0; font-family: "Segoe UI", sans-serif; font-weight: 600; font-size: 17px; }
+    .batt { width: 26px; height: 13px; border: 2px solid #1c1c1e; border-radius: 4px; position: relative; }
+    .batt::after { content: ""; position: absolute; top: 1px; left: 1px; width: 16px; height: 7px; background: #1c1c1e; border-radius: 1px; }
+    .head { display: flex; align-items: center; padding: 10px 18px 14px; border-bottom: 1px solid #e6e1da; background: rgba(255, 255, 255, .6); }
+    .back { color: #0a7cff; font-size: 30px; margin-right: 10px; line-height: 1; }
+    .av { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: #fff; flex: none; }
+    .av.mom { background: linear-gradient(135deg, #f7a08a, #e46a7e); }
+    .av.ya { background: linear-gradient(135deg, #8fb8ff, #6a7ee4); }
+    .who { margin-left: 12px; }
+    .who b { display: block; font-size: 19px; }
+    .who span { font-size: 14px; color: #34c759; }
+    .chat { padding: 16px 16px 0; }
+    .row { display: flex; margin-bottom: 12px; align-items: flex-end; }
+    .row.me { justify-content: flex-end; }
+    .b { max-width: 255px; padding: 11px 15px; border-radius: 22px; font-size: 18px; line-height: 1.45; }
+    .in .b { background: #fff; border-bottom-left-radius: 6px; box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
+    .me .b { background: #0a7cff; color: #fff; border-bottom-right-radius: 6px; }
+    .card {
+        margin: 2px 0 12px; background: #fff; border-radius: 18px; padding: 12px 14px; display: flex; align-items: center;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, .08); border-left: 5px solid #ff9f0a; width: 300px;
+    }
+    .card .ic { width: 40px; height: 40px; border-radius: 12px; background: #fff3e0; display: flex; align-items: center; justify-content: center; font-size: 22px; flex: none; }
+    .card div { margin-left: 12px; }
+    .card b { display: block; font-size: 16px; }
+    .card span { font-size: 14px; color: #8a8a8e; }
+    .time { text-align: center; font-size: 13px; color: #9a958f; margin: 2px 0 12px; }
+    .typing { display: inline-flex; padding: 14px 16px; }
+    .typing i { width: 9px; height: 9px; border-radius: 50%; background: #b9b4ae; margin: 0 3px; display: block; }
+    .typing i:nth-child(2) { background: #a29d97; }
+    .input { position: absolute; left: 14px; right: 14px; bottom: 20px; height: 50px; border-radius: 25px; background: #fff; border: 1px solid #e2ddd6; display: flex; align-items: center; padding: 0 18px; color: #a8a39d; font-size: 17px; }
+    .input em { font-style: normal; margin-left: auto; width: 34px; height: 34px; border-radius: 50%; background: #0a7cff; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 18px; margin-right: -10px; }
+
+    /* Moments card */
+    .moment {
+        position: absolute; right: 545px; top: 420px; width: 320px; background: rgba(255, 255, 255, .97); color: #1c1c1e;
+        border-radius: 26px; padding: 18px; transform: rotate(-4deg); z-index: 3; box-shadow: 0 30px 60px rgba(0, 0, 0, .4);
+    }
+    .m-head { display: flex; align-items: center; }
+    .m-head .who span { color: #8a8a8e; }
+    .m-text { font-size: 18px; line-height: 1.5; margin: 12px 0 10px; }
+    .m-photo { height: 120px; border-radius: 16px; background: url("promo-bg.jpg") 62% 72% / 330% auto no-repeat; }
+    .m-likes { font-size: 15px; color: #e0457b; margin-top: 12px; }
+    .m-cmt { font-size: 15px; color: #3a3a3c; margin-top: 8px; padding: 9px 12px; background: #f3f0ec; border-radius: 12px; }
+    .m-cmt b { color: #576b95; font-weight: 600; }
+    .m-label {
+        position: absolute; top: -18px; left: 22px; background: #ff5c8a; color: #fff; font-size: 15px; font-weight: 700;
+        padding: 6px 14px; border-radius: 999px; letter-spacing: 1px;
+    }
+</style>
+</head>
+<body>
+<div class="shade"></div>
+
+<div class="copy">
+    <span class="eyebrow">inZOI MOD · 免费 · 开源</span>
+    <h1>inZOI AI Phone</h1>
+    <h2>AI 手机</h2>
+    <p class="tag">游戏里的家人朋友，会真的给你回消息</p>
+    <p class="tag-en">Your Zois text you back, and actually do things.</p>
+    <div class="chips">
+        <span class="chip">AI 短信</span>
+        <span class="chip">主动来信</span>
+        <span class="chip">朋友圈</span>
+        <span class="chip">群聊</span>
+        <span class="chip">点外卖</span>
+        <span class="chip">买车</span>
+        <span class="chip">改变心情</span>
+    </div>
+</div>
+<div class="foot">支持 DeepSeek · 通义千问 · Kimi · 智谱 GLM · 豆包 · OpenAI<br><b>github.com/s2cr3t/inZOI-AI-Phone</b></div>
+
+<div class="moment">
+    <span class="m-label">朋友圈</span>
+    <div class="m-head">
+        <div class="av ya">雅</div>
+        <div class="who"><b>小雅</b><span>刚刚</span></div>
+    </div>
+    <p class="m-text">下班路上的晚霞也太好看了吧，今天辛苦了 🌇</p>
+    <div class="m-photo"></div>
+    <p class="m-likes">♥ 妈妈、阿杰 等 6 人</p>
+    <p class="m-cmt"><b>阿杰：</b>下次叫上我一起去江边！</p>
+</div>
+
+<div class="stage">
+    <div class="phone">
+        <div class="screen">
+            <div class="island"></div>
+            <div class="status"><span>18:42</span><span class="batt"></span></div>
+            <div class="head">
+                <span class="back">‹</span>
+                <div class="av mom">妈</div>
+                <div class="who"><b>妈妈</b><span>在线</span></div>
+            </div>
+            <div class="chat">
+                <p class="time">今天 18:40</p>
+                <div class="row in"><p class="b">下班了没？今晚想吃什么，妈给你点个外卖 🍜</p></div>
+                <div class="row me"><p class="b">想吃拉面！要加溏心蛋</p></div>
+                <div class="row in"><p class="b">好嘞，已经下单了，二十分钟就到～</p></div>
+                <div class="card">
+                    <span class="ic">🍜</span>
+                    <div><b>外卖已下单 · 豚骨拉面</b><span>妈妈帮你点的 · 约 20 分钟</span></div>
+                </div>
+                <div class="row me"><p class="b">妈妈最好了 ❤️</p></div>
+                <div class="row in"><p class="b typing"><i></i><i></i><i></i></p></div>
+            </div>
+            <div class="input">发消息…<em>↑</em></div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
