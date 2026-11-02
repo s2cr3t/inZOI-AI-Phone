@@ -37,7 +37,7 @@ const MODS = [
         // code, covers) and must never ship.
         privateDirs: ['ui/phone/sms', 'ui/phone/moments', 'ui/phone/portraits', 'ui/phone/service', 'ui/phone/saved', 'ui/phone/persona',
             'ui/phone/wallpapers/custom', 'ui/phone/music', 'ui/phone/freelance', 'ui/phone/messages', 'ui/phone/vehicle',
-            'ui/phone/groups', 'ui/phone/media', 'ui/phone/diag']
+            'ui/phone/groups', 'ui/phone/media', 'ui/phone/diag', 'ui/phone/stories']
     },
     {
         id: paths.JOURNAL_MOD_ID,

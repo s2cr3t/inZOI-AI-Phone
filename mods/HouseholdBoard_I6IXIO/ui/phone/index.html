@@ -55,7 +55,7 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
            padding: 0 16px 8px 16px; }
 /* The home indicator is phone chrome, not page content: it sits after #content, centred by the
    root's flex column. It used to live inside the scrolling content and rely on position: sticky,
-   which cohtml computes as static — so on any short, non-flex page (the texts list) the bar
+   which cohtml computes as static 鈥?so on any short, non-flex page (the texts list) the bar
    stopped right under the last card instead of at the bottom of the phone. */
 .ph-home { flex-shrink: 0; align-self: center; width: 128px; height: 5px; margin: 4px auto 8px auto;
            border-radius: 3px; background: rgba(255, 255, 255, 0.92); pointer-events: none; }
@@ -143,6 +143,7 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 .ic-store  { background-color: #0A84FF; background-image: linear-gradient(180deg, #5AC8FA 0%, #0A60FF 100%); }
 .ic-texts  { background-color: #30D158; background-image: linear-gradient(180deg, #5BE584 0%, #1DB84A 100%); }
 .ic-ai     { background-color: #0A9488; background-image: linear-gradient(180deg, #3DDBC9 0%, #0A8478 100%); }
+.ic-stories { background-color: #AF52DE; background-image: linear-gradient(180deg, #D58CF2 0%, #9A3DD0 100%); }
 .ic-settings { background-color: #8E8E93; background-image: linear-gradient(180deg, #A9A9AF 0%, #69696F 100%); }
 .ic-contacts { background-color: #8E8E93; background-image: linear-gradient(180deg, #C7C7CC 0%, #8E8E93 100%); }
 
@@ -439,7 +440,7 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 /* ---------- Texts splash ----------
    Texts opens on a quiet one: nothing is being fetched from the far side of the PC, so the veil
    is only there for the moment the page takes to paint. A typing bubble with three dots is the
-   whole indicator — no glow, no bar — and it follows the phone's own light or dark surface. */
+   whole indicator 鈥?no glow, no bar 鈥?and it follows the phone's own light or dark surface. */
 .tx-cover { position: absolute; z-index: 50; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden;
             display: flex; align-items: center; justify-content: center; opacity: 0;
             background-color: #0b0b0d;
@@ -485,7 +486,7 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 }
 
 /* ---------- Moments splash ----------
-   Texts' sibling opens the same way — on a veil, for as long as the page takes to paint — but the
+   Texts' sibling opens the same way 鈥?on a veil, for as long as the page takes to paint 鈥?but the
    mark is the app's own: a story ring, with the day's photo inside it, instead of a typing bubble.
    Warm ink, because Moments is pictures where Texts is conversation; the two shimmer bars are the
    feed still being laid out underneath. Everything here is a plain block on fixed pixels, on the
@@ -509,7 +510,7 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
                 -webkit-animation: mo-splash-turn 1.05s linear infinite;
                 animation: mo-splash-turn 1.05s linear infinite; }
 /* 104 - 66 = 38, so the photo sits 19px in on both sides and the ring keeps a 16px band of its
-   own all the way round — at 92px the tile all but covered it. */
+   own all the way round 鈥?at 92px the tile all but covered it. */
 .mo-cover-photo { position: absolute; top: 19px; left: 19px; width: 66px; height: 66px; border-radius: 22px;
                   background-color: #F2541B;
                   background-image: linear-gradient(150deg, #FFA574 0%, #FF6B3D 48%, #D8400F 100%);
@@ -1389,6 +1390,121 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 .sms-presence.off { color: #8e8e93; }
 .sms-presence.err { color: #FF453A; }
 .sms-presence.inline { flex-shrink: 1; margin-top: 0; margin-left: 8px; font-size: 12px; }
+/* Stories in the chat: the heart under the name, the tag under a message that let a story show,
+   and the line that tells how a story ended. Each opens the Stories app. */
+.sms-heart { margin: 2px auto 0 auto; font-size: 11px; font-weight: bold; color: #BF5AF2; cursor: pointer; }
+.sms-heart:active { opacity: 0.6; }
+.sms-heart.inline { flex-shrink: 1; margin: 0 0 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
+.sms-hint { display: table; margin: 4px 0 2px 4px; padding: 2px 8px; border-radius: 9px; background: rgba(191, 90, 242, 0.16);
+    font-size: 11px; font-weight: bold; color: #BF5AF2; cursor: pointer; }
+.sms-hint:active { opacity: 0.6; }
+.sms-notice { margin: 12px 18px 8px 18px; padding: 8px 12px; border-radius: 12px; background: rgba(191, 90, 242, 0.12);
+    text-align: center; font-size: 12px; line-height: 1.45; color: #d1d1d6; cursor: pointer; }
+.sms-notice:active { opacity: 0.6; }
+.sms-notice-go { display: inline-block; margin-left: 6px; font-weight: bold; color: #BF5AF2; white-space: nowrap; }
+.sms-hint.sms-in, .sms-notice.sms-in {
+    -webkit-animation: sms-stamp-in 0.36s ease-out both;
+    animation: sms-stamp-in 0.36s ease-out both;
+}
+
+/* Stories app */
+.st-card { cursor: pointer; }
+.st-card:active { opacity: 0.75; }
+.st-card.soon { box-shadow: 0 0 0 1px rgba(255, 159, 10, 0.55) inset; }
+.st-title { margin-top: 2px; font-size: 14px; font-weight: bold; color: #f5f5f7; }
+.st-title.hidden { font-weight: normal; color: #BF5AF2; }
+.st-pill.soon { background: rgba(255, 159, 10, 0.18); color: #FF9F0A; }
+.st-pill.good { background: rgba(48, 209, 88, 0.18); color: #30D158; }
+.st-pill.bad { background: rgba(255, 69, 58, 0.18); color: #FF453A; }
+.st-pill.past { background: rgba(142, 142, 147, 0.2); color: #aeaeb2; }
+.st-progress { margin-top: 12px; }
+.st-steps { display: flex; }
+.st-step { flex: 1; height: 6px; margin-right: 4px; border-radius: 3px; background: #3a3a3c; }
+.st-step:last-child { margin-right: 0; }
+.st-step.done { background: #BF5AF2; }
+.st-step.now { background: rgba(191, 90, 242, 0.45); }
+.st-progress-text { margin-top: 6px; font-size: 12px; color: #8e8e93; }
+.st-progress-text.soon { color: #FF9F0A; font-weight: bold; }
+.st-sub { margin-top: 12px; font-size: 11px; font-weight: bold; letter-spacing: 1px; color: #8e8e93; }
+.st-text { margin-top: 4px; font-size: 14px; line-height: 1.5; color: #e5e5ea; }
+.st-clues { margin-top: 4px; }
+.st-clue { display: flex; align-items: flex-start; margin-top: 6px; font-size: 14px; line-height: 1.45; color: #e5e5ea; }
+.st-clue-dot { flex-shrink: 0; width: 6px; height: 6px; margin: 7px 8px 0 2px; border-radius: 3px; background: #BF5AF2; }
+.st-clue-text { flex: 1; min-width: 0; }
+.st-clue-day { flex-shrink: 0; margin-left: 8px; font-size: 11px; color: #8e8e93; white-space: nowrap; }
+.st-clue-empty { margin-top: 4px; font-size: 13px; color: #8e8e93; }
+.st-go { margin-top: 12px; text-align: right; font-size: 13px; font-weight: bold; color: #0A84FF; }
+.st-tally { margin-top: 4px; font-size: 12px; color: #8e8e93; }
+.st-ended { margin-top: 12px; padding-top: 12px; border-top: 1px solid #2c2c2e; cursor: pointer; }
+.st-ended:active { opacity: 0.75; }
+.st-ended-top { display: flex; align-items: center; }
+.st-ended-title { flex: 1; min-width: 0; font-size: 15px; font-weight: bold; color: #f5f5f7; }
+.st-ended.new .st-ended-title { color: #BF5AF2; }
+.st-ended-meta { margin-top: 2px; font-size: 12px; color: #8e8e93; }
+.st-ended-more { margin-top: 6px; font-size: 12px; font-weight: bold; color: #0A84FF; }
+.st-deep { margin-top: 8px; font-size: 12px; font-weight: bold; color: #BF5AF2; }
+.st-keepsake { display: table; margin-top: 6px; padding: 2px 8px; border-radius: 9px; background: rgba(255, 214, 10, 0.14);
+    font-size: 12px; font-weight: bold; color: #FFD60A; }
+.st-mend { margin-top: 6px; font-size: 12px; font-weight: bold; }
+.st-mend.open { color: #FF9F0A; cursor: pointer; }
+.st-mend.open:active { opacity: 0.6; }
+.st-mend.done { color: #30D158; }
+.st-mend.missed { font-weight: normal; color: #8e8e93; }
+.st-trust-count { margin-top: 2px; font-size: 12px; color: #aeaeb2; }
+.st-trust-next { margin-top: 10px; font-size: 12px; font-weight: bold; color: #BF5AF2; }
+.st-pill.trust { background: rgba(191, 90, 242, 0.18); color: #BF5AF2; }
+.st-pill.fresh { margin-left: 6px; background: rgba(255, 214, 10, 0.2); color: #FFD60A; }
+/* 纪念与信任: the way in from the Stories page */
+.st-entry { display: flex; align-items: center; cursor: pointer;
+    background-image: linear-gradient(135deg, rgba(191, 90, 242, 0.22) 0%, rgba(191, 90, 242, 0.06) 100%);
+    box-shadow: 0 0 0 1px rgba(191, 90, 242, 0.35) inset; }
+.st-entry:active { opacity: 0.75; }
+.st-entry.fresh { box-shadow: 0 0 0 1px rgba(255, 214, 10, 0.6) inset; }
+.st-entry-badge { flex-shrink: 0; width: 44px; height: 44px; margin-right: 12px; border-radius: 22px; line-height: 44px; text-align: center;
+    font-size: 20px; font-weight: bold; color: #ffffff; background-image: linear-gradient(135deg, #FFD60A 0%, #FF9F0A 100%); }
+.st-entry-top { display: flex; align-items: center; }
+.st-entry-title { font-size: 16px; font-weight: bold; color: #f5f5f7; }
+.st-entry-sub { margin-top: 2px; font-size: 13px; font-weight: bold; color: #BF5AF2; }
+.st-entry-count { margin-top: 2px; font-size: 12px; color: #aeaeb2; }
+.st-entry-go { flex-shrink: 0; margin-left: 8px; font-size: 22px; font-weight: bold; color: #BF5AF2; }
+/* 纪念与信任: the page */
+.st-hero { margin-top: 12px; padding: 16px 14px 14px 14px; border-radius: 16px; color: #ffffff;
+    background-color: #5E2B97; background-image: linear-gradient(135deg, #8E44D9 0%, #4B1E85 100%); }
+.st-hero-stats { display: flex; }
+.st-hero-stat { flex: 1; min-width: 0; text-align: center; }
+.st-hero-num { font-size: 30px; font-weight: bold; line-height: 1.1; }
+.st-hero-label { margin-top: 4px; font-size: 12px; color: rgba(255, 255, 255, 0.78); }
+.st-hero-line { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.18); text-align: center;
+    font-size: 14px; font-weight: bold; line-height: 1.45; }
+.st-mend-card { box-shadow: 0 0 0 1px rgba(255, 159, 10, 0.5) inset; }
+.st-mend-row { margin-top: 10px; }
+.st-tl { margin-top: 12px; }
+.st-tl.sep { margin-top: 14px; padding-top: 14px; border-top: 1px solid #2c2c2e; }
+.st-rungs { display: flex; margin-top: 12px; }
+.st-rung { flex: 1; min-width: 0; margin-right: 6px; text-align: center; }
+.st-rung:last-child { margin-right: 0; }
+.st-rung-track { height: 6px; border-radius: 3px; background: #3a3a3c; overflow: hidden; }
+.st-rung-fill { height: 6px; border-radius: 3px; background: #BF5AF2; }
+.st-rung-title { margin-top: 6px; font-size: 11px; font-weight: bold; line-height: 1.35; color: #8e8e93; }
+.st-rung.on .st-rung-title { color: #BF5AF2; }
+.st-rung-need { margin-top: 2px; font-size: 10px; color: #8e8e93; }
+.st-rung.on .st-rung-need { color: #30D158; }
+.st-rung-unlock { display: inline-block; margin-top: 4px; padding: 1px 6px; border-radius: 7px; font-size: 10px;
+    background: rgba(142, 142, 147, 0.18); color: #8e8e93; }
+.st-rung.on .st-rung-unlock { background: rgba(191, 90, 242, 0.18); color: #BF5AF2; }
+.st-kgrid { display: flex; flex-wrap: wrap; margin: 6px -4px 0 -4px; }
+.st-ktile { width: 50%; padding: 4px; box-sizing: border-box; cursor: pointer; }
+.st-ktile:active { opacity: 0.75; }
+.st-ktile-in { position: relative; min-height: 76px; padding: 10px; border-radius: 12px; box-sizing: border-box;
+    background: rgba(255, 214, 10, 0.08); box-shadow: 0 0 0 1px rgba(255, 214, 10, 0.22) inset; }
+.st-ktile-in.sel { background: rgba(255, 214, 10, 0.16); box-shadow: 0 0 0 2px #FFD60A inset; }
+.st-ktile-new { position: absolute; top: 6px; right: 6px; padding: 0 5px; border-radius: 6px; font-size: 10px; font-weight: bold;
+    line-height: 16px; color: #1c1c1e; background: #FFD60A; }
+.st-ktile-name { padding-right: 18px; font-size: 14px; font-weight: bold; line-height: 1.35; color: #FFD60A; word-wrap: break-word; overflow-wrap: break-word; }
+.st-ktile-from { margin-top: 4px; font-size: 11px; color: #e5e5ea; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-ktile-meta { margin-top: 2px; font-size: 10px; color: #8e8e93; }
+.st-kdetail { margin-top: 10px; padding: 12px; border-radius: 12px; background: #2c2c2e; }
+.st-kdetail-name { font-size: 16px; font-weight: bold; color: #FFD60A; }
 .ph-card.sms-contact { margin-top: 0; padding: 12px 2px; border-radius: 0; background: transparent;
                        border-bottom: 1px solid rgba(255, 255, 255, 0.1); cursor: pointer; }
 .sms-pic { position: relative; flex-shrink: 0; }
@@ -1670,6 +1786,48 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 #app-root.theme-light .ai-hint { color: #6e6e73; }
 #app-root.theme-light .ai-zh { color: #6e6e73; }
 #app-root.theme-light .ai-url { background: #f2f2f7; color: #1c1c1e; }
+#app-root.theme-light .sms-heart, #app-root.theme-light .sms-hint, #app-root.theme-light .sms-notice-go,
+#app-root.theme-light .st-title.hidden, #app-root.theme-light .st-ended.new .st-ended-title { color: #8944AB; }
+#app-root.theme-light .sms-notice { color: #3a3a3c; }
+#app-root.theme-light .st-title, #app-root.theme-light .st-ended-title { color: #1c1c1e; }
+#app-root.theme-light .st-text, #app-root.theme-light .st-clue { color: #3a3a3c; }
+#app-root.theme-light .st-step { background: #e5e5ea; }
+#app-root.theme-light .st-step.done { background: #AF52DE; }
+#app-root.theme-light .st-step.now { background: rgba(175, 82, 222, 0.4); }
+#app-root.theme-light .st-card.soon { box-shadow: 0 0 0 1px rgba(201, 52, 0, 0.45) inset; }
+#app-root.theme-light .st-ended { border-top-color: #e5e5ea; }
+#app-root.theme-light .st-pill.soon { color: #c93400; }
+#app-root.theme-light .st-pill.good { color: #248a3d; }
+#app-root.theme-light .st-pill.bad { color: #d70015; }
+#app-root.theme-light .st-pill.past { color: #6e6e73; }
+#app-root.theme-light .st-progress-text.soon { color: #c93400; }
+#app-root.theme-light .st-deep, #app-root.theme-light .st-trust-next, #app-root.theme-light .st-pill.trust { color: #8944AB; }
+#app-root.theme-light .st-keepsake { background: rgba(255, 159, 10, 0.16); color: #9a5b00; }
+#app-root.theme-light .st-mend.open { color: #c93400; }
+#app-root.theme-light .st-mend.done { color: #248a3d; }
+#app-root.theme-light .st-mend.missed { color: #6e6e73; }
+#app-root.theme-light .st-trust-count, #app-root.theme-light .st-entry-count { color: #6e6e73; }
+#app-root.theme-light .st-pill.fresh { background: rgba(255, 159, 10, 0.18); color: #9a5b00; }
+#app-root.theme-light .st-entry { background-image: linear-gradient(135deg, rgba(175, 82, 222, 0.14) 0%, rgba(175, 82, 222, 0.03) 100%);
+    box-shadow: 0 0 0 1px rgba(175, 82, 222, 0.35) inset; }
+#app-root.theme-light .st-entry.fresh { box-shadow: 0 0 0 1px rgba(255, 159, 10, 0.7) inset; }
+#app-root.theme-light .st-entry-title { color: #1c1c1e; }
+#app-root.theme-light .st-entry-sub, #app-root.theme-light .st-entry-go { color: #8944AB; }
+#app-root.theme-light .st-mend-card { box-shadow: 0 0 0 1px rgba(201, 52, 0, 0.4) inset; }
+#app-root.theme-light .st-tl.sep { border-top-color: #e5e5ea; }
+#app-root.theme-light .st-rung-track { background: #e5e5ea; }
+#app-root.theme-light .st-rung-fill { background: #AF52DE; }
+#app-root.theme-light .st-rung-title, #app-root.theme-light .st-rung-need { color: #6e6e73; }
+#app-root.theme-light .st-rung.on .st-rung-title { color: #8944AB; }
+#app-root.theme-light .st-rung.on .st-rung-need { color: #248a3d; }
+#app-root.theme-light .st-rung-unlock { color: #6e6e73; }
+#app-root.theme-light .st-rung.on .st-rung-unlock { background: rgba(175, 82, 222, 0.14); color: #8944AB; }
+#app-root.theme-light .st-ktile-in { background: rgba(255, 159, 10, 0.08); box-shadow: 0 0 0 1px rgba(255, 159, 10, 0.3) inset; }
+#app-root.theme-light .st-ktile-in.sel { background: rgba(255, 159, 10, 0.16); box-shadow: 0 0 0 2px #FF9F0A inset; }
+#app-root.theme-light .st-ktile-name, #app-root.theme-light .st-kdetail-name { color: #9a5b00; }
+#app-root.theme-light .st-ktile-from { color: #3a3a3c; }
+#app-root.theme-light .st-ktile-meta { color: #6e6e73; }
+#app-root.theme-light .st-kdetail { background: #f2f2f7; }
 #app-root.theme-light .ai-input { border-color: #d1d1d6; background: #f2f2f7; color: #1c1c1e; }
 #app-root.theme-light .ai-input:focus { border-color: #aeaeb2; }
 #app-root.theme-light .ai-result { color: #6e6e73; }
@@ -2046,7 +2204,7 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
      ==================================================================== -->
 <script src="coui://inzoi/cohtml.js"></script>
 <script src="coui://inzoi/mod/inzoi-sdk.js"></script>
-<script src="window.js?v=2.52.0"></script>
-<script src="app.js?v=2.52.0"></script>
+<script src="window.js?v=2.54.1"></script>
+<script src="app.js?v=2.54.1"></script>
 </body>
 </html>
