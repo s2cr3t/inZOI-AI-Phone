@@ -448,6 +448,32 @@
         var anim = null;
         var linger = 0;
         var openedAt = 0;
+        // An input method's candidate list is its own window outside the phone: turning to its
+        // next page with the mouse takes the pointer off the phone. Tucking away then blurs the
+        // field, and the input method writes the half-typed pinyin into it as letters. While a
+        // word is being composed the phone stays out; it tucks once the word is done.
+        var composing = false;
+        var pointerOut = false;
+
+        function textFocused() {
+            var a = document.activeElement;
+            var tag = a && a.tagName ? String(a.tagName).toUpperCase() : '';
+            return (tag === 'TEXTAREA' || tag === 'INPUT') && root.contains(a);
+        }
+        function stillComposing() {
+            if (composing && !textFocused()) composing = false;
+            return composing;
+        }
+        function composeDone() {
+            composing = false;
+            if (edge && opened && pointerOut) {
+                clearTimeout(linger);
+                linger = setTimeout(retreat, LINGER_MS);
+            }
+        }
+        document.addEventListener('compositionstart', function () { composing = true; }, true);
+        document.addEventListener('compositionend', composeDone, true);
+        document.addEventListener('blur', function () { if (composing && !textFocused()) composeDone(); }, true);
 
         function vw() { return window.innerWidth  || document.documentElement.clientWidth  || 1920; }
         function vh() { return window.innerHeight || document.documentElement.clientHeight || 1080; }
@@ -553,6 +579,7 @@
 
         function retreat() {
             if (!edge || !opened) return;
+            if (stillComposing()) return;   // composeDone tucks it once the word is finished
             opened = false;
             // A field that was being typed into must not keep the keyboard: the phone is going
             // away, so the game gets the keys back.
@@ -592,9 +619,11 @@
         // the release that parked it (pointer still on the sliver) from popping it straight
         // back out; a real hover always comes later than that.
         root.addEventListener('mouseenter', function () {
+            pointerOut = false;
             if (edge && !opened && Date.now() - parkedAt > 260) reveal();
         });
         root.addEventListener('mouseleave', function () {
+            pointerOut = true;
             if (!edge) return;
             if (!opened) return;
             // The rect is moving while the phone slides out and hit-testing follows it, which
