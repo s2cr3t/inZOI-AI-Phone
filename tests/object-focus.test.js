@@ -84,6 +84,20 @@ test('scanned objects without actions, including failed queries, remain discover
     assert.deepEqual(c.more.map((o) => o.id), ['701', '702', '703']);
     assert.equal(c.more[1].error, true);
 });
+test('a failed menu probe is not cached as a kind without actions', async () => {
+    let fail = true;
+    const a = new Actions({ call: async () => {
+        if (fail) throw new GameToolError('interaction_list_available', 'busy');
+        return { interactions: [{ interaction_bag_id: play.id, display_name: play.name, enabled: true }] };
+    } }, {}, log);
+    a.scanObjects = async () => [{ id: '701', name: machine.name, meters: 1 }];
+    const first = await a.nearbyObjects('20524', 'Child', {}, {});
+    assert.equal(first.objects.length, 0);
+    assert.equal(first.more[0].error, true);
+    fail = false;
+    const second = await a.nearbyObjects('20524', 'Child', {}, {});
+    assert.deepEqual(second.objects.map((o) => o.id), ['701']);
+});
 test('focus lookup promotes distant objects, keeps catalog cache unchanged, and bounds reads', async () => {
     const a = new Actions({}, {}, log);
     const calls = [];
