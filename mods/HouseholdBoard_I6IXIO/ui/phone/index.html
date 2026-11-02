@@ -59,6 +59,9 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
    stopped right under the last card instead of at the bottom of the phone. */
 .ph-home { flex-shrink: 0; align-self: center; width: 128px; height: 5px; margin: 4px auto 8px auto;
            border-radius: 3px; background: rgba(255, 255, 255, 0.92); pointer-events: none; }
+/* Where a swipe up to the home screen starts (app.js swipeZone): the bar's strip, a little wider
+   and taller than the bar, clear of the resize corner. */
+#ph-home-grab { position: absolute; z-index: 2; left: 25%; right: 25%; bottom: 0; height: 22px; }
 #resize-handle { position: absolute; z-index: 2; bottom: 8px; right: 10px; width: 16px; height: 16px; cursor: nwse-resize; opacity: 0.4;
                  background: linear-gradient(135deg, transparent 46%, rgba(255, 255, 255, 0.7) 46%, rgba(255, 255, 255, 0.7) 58%, transparent 58%, transparent 70%, rgba(255, 255, 255, 0.7) 70%, rgba(255, 255, 255, 0.7) 82%, transparent 82%); }
 #resize-handle:hover { opacity: 0.85; }

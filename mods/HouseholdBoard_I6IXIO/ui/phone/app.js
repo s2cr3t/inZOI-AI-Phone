@@ -1702,6 +1702,9 @@
         if (on) wf.content.classList.add('home-open');
         else wf.content.classList.remove('home-open');
         if (on) wf.content.scrollTop = 0;
+        // Nothing to swipe home from on the home screen; the dock there keeps all its clicks.
+        var grab = document.getElementById('ph-home-grab');
+        if (grab) grab.style.display = on ? 'none' : '';
     }
 
     // Called each time the home view is put on screen (rendered or taken from the cache).
@@ -1894,6 +1897,206 @@
         if (!v.viewport.offsetParent) return;
         if (v.viewport.clientWidth !== v.w || v.viewport.clientHeight !== v.h) homePaginate();
     }, HOME_SIZE_POLL_MS);
+
+    // ------------------------------------------------------------------
+    // Swipe up from the home indicator, as on the iPhone
+    // ------------------------------------------------------------------
+    // Pressing on the bar at the bottom of the phone and dragging up lifts the open page: the
+    // window (pinned header and content) shrinks and follows the pointer. Let go high enough, or
+    // with a flick, and the page closes into its home icon, the close animation starting from
+    // where the window was let go (homeLift, used by applyFrame); otherwise it springs back.
+    var SWIPE_START_PX = 6;
+    var SWIPE_HOME_SHARE = 0.18;     // of the window's height
+    var SWIPE_HOME_MIN_PX = 60;
+    var SWIPE_FLICK_PX_MS = 0.5;
+    var SWIPE_FULL_SHARE = 0.55;     // drag that brings the window to its smallest
+    var SWIPE_MIN_SCALE = 0.62;
+    var SWIPE_RADIUS = 34;
+    var SWIPE_BACK = { response: 0.3, damping: 0.86, ms: 380 };
+    var SWIPE_WAIT_MS = 2500;
+    var SWIPE_SHADOW = '0 12px 36px rgba(0, 0, 0, 0.35)';
+    var swipeDrag = null;
+    var swipeBack = null;
+    // The window frame a swipe let go at: { s, x, y } in the window's own space, read once by
+    // the close transition that follows.
+    var homeLift = null;
+    var homeLiftAt = 0;
+    var closeLift = null;
+
+    function swipeZone() {
+        var root = wf.root;
+        if (!root) return null;
+        var z = document.getElementById('ph-home-grab');
+        if (z) return z;
+        z = document.createElement('div');
+        z.id = 'ph-home-grab';
+        root.appendChild(z);
+        z.addEventListener('mousedown', swipeStart);
+        return z;
+    }
+
+    function swipeAllowed() {
+        return current !== 'home' && !playedYoung && !transition && !homeLift &&
+            !dcCurtain && !txCurtain && !flCurtain && !nwCurtain &&
+            !(wf.root && wf.root._minimized) && wf.content.style.display !== 'none';
+    }
+
+    // The open page's window: the pinned header and the content under it.
+    function swipeWindow() {
+        var content = wf.content;
+        var headH = headShown() ? headHeight() : 0;
+        return { w: content.offsetWidth, h: content.offsetHeight + headH, headH: headH };
+    }
+
+    // Window frame for a drag of `up` pixels.
+    function swipeFrame(win, up) {
+        var full = win.h * SWIPE_FULL_SHARE;
+        var d = up < 0 ? up * 0.2 : up > full ? full + (up - full) * 0.3 : up;
+        var k = clamp01(d / full);
+        var s = lerp(1, SWIPE_MIN_SCALE, k);
+        var cx = win.w / 2;
+        var cy = win.h / 2 - d * 0.85;
+        return { s: s, x: cx - s * win.w / 2, y: cy - s * win.h / 2, r: lerp(0, SWIPE_RADIUS, k) / s };
+    }
+
+    function swipePaint(win, f) {
+        var content = wf.content;
+        var t = 'translate(' + f.x + 'px, ' + f.y + 'px) scale(' + f.s + ')';
+        var r = f.r + 'px';
+        setOrigin(content, '0px ' + (-win.headH) + 'px');
+        setTransform(content, t);
+        if (win.headH) {
+            setOrigin(el.head, '0 0');
+            setTransform(el.head, t);
+            el.head.style.borderRadius = r + ' ' + r + ' 0px 0px';
+            content.style.borderRadius = '0px 0px ' + r + ' ' + r;
+        } else {
+            content.style.borderRadius = r;
+        }
+    }
+
+    // The page is see-through onto the phone's wallpaper. While it is lifted it carries its own
+    // copy, shrinking with it, and a shadow: a card over the wallpaper rather than a page fading
+    // into it.
+    function swipeDress(win) {
+        var content = wf.content;
+        if (appOfScreen(current) === 'dreamcar') {
+            content.style.backgroundColor = '#0b0b0d';
+            if (win.headH) el.head.style.backgroundColor = '#0b0b0d';
+        } else {
+            paintWallpaper(content, content.offsetLeft, content.offsetTop);
+            if (win.headH) paintWallpaper(el.head, content.offsetLeft, content.offsetTop - win.headH);
+        }
+        content.style.boxShadow = SWIPE_SHADOW;
+    }
+
+    function swipeClear() {
+        clearAnimStyles(wf.content);
+        clearAnimStyles(el.head);
+    }
+
+    function swipeStart(e) {
+        if (e.button || !swipeAllowed()) return;
+        if (swipeBack) { swipeBack.dead = true; swipeBack = null; swipeClear(); }
+        if (e.preventDefault) e.preventDefault();
+        if (e.stopPropagation) e.stopPropagation();
+        var win = swipeWindow();
+        if (!win.w || !win.h) return;
+        swipeDrag = { y: e.clientY, up: 0, win: win, moved: false, press: pressStart(e),
+            samples: [{ y: e.clientY, t: Date.now() }] };
+    }
+
+    document.addEventListener('mousemove', function (e) {
+        var d = swipeDrag;
+        if (!d) return;
+        if (pressLost(e, d.press)) {
+            swipeEnd();
+            return;
+        }
+        var up = d.y - e.clientY;
+        if (!d.moved) {
+            if (up < SWIPE_START_PX) return;
+            if (!swipeAllowed()) { swipeDrag = null; return; }
+            d.moved = true;
+            // A field being typed into must not ride the window, nor keep the keyboard.
+            releaseTextFocus(el.screen, false);
+            swipeDress(d.win);
+        }
+        d.up = up;
+        swipePaint(d.win, swipeFrame(d.win, up));
+        d.samples.push({ y: e.clientY, t: Date.now() });
+        if (d.samples.length > 6) d.samples.shift();
+    });
+
+    function swipeEnd() {
+        var d = swipeDrag;
+        if (!d) return;
+        swipeDrag = null;
+        if (!d.moved) return;
+        var first = d.samples[0];
+        var last = d.samples[d.samples.length - 1];
+        var dt = last.t - first.t;
+        var v = dt > 0 ? (first.y - last.y) / dt : 0;
+        var far = d.up >= Math.max(SWIPE_HOME_MIN_PX, d.win.h * SWIPE_HOME_SHARE);
+        var flick = v >= SWIPE_FLICK_PX_MS && d.up > SWIPE_START_PX * 3;
+        if ((far || flick) && v > -SWIPE_FLICK_PX_MS && swipeAllowed()) {
+            homeLift = swipeFrame(d.win, d.up);
+            homeLiftAt = Date.now();
+            open('home');
+            // Going home may wait for the home screen's data; it may also not happen at all
+            // (another page took over). The lifted window then settles back.
+            swipeWaitHome(d.win);
+            return;
+        }
+        swipeSettle(d.win, swipeFrame(d.win, d.up));
+    }
+
+    function swipeWaitHome(win) {
+        if (!homeLift) return;
+        if (current === 'home' && !transition) { homeLift = null; swipeClear(); return; }
+        if (Date.now() - homeLiftAt > SWIPE_WAIT_MS || (!awaiting('home') && current !== 'home')) {
+            var f = homeLift;
+            homeLift = null;
+            swipeSettle(win, f);
+            return;
+        }
+        setTimeout(function () { swipeWaitHome(win); }, 50);
+    }
+
+    // Springs the window back to full size from frame f.
+    function swipeSettle(win, f) {
+        var anim = { t0: Date.now(), dead: false };
+        swipeBack = anim;
+        var step = function () {
+            if (anim.dead) return;
+            var ms = Date.now() - anim.t0;
+            if (ms >= SWIPE_BACK.ms || transition) {
+                swipeBack = null;
+                swipeClear();
+                return;
+            }
+            var p = springAt(ms / 1000, SWIPE_BACK.response, SWIPE_BACK.damping);
+            swipePaint(win, { s: lerp(f.s, 1, p), x: lerp(f.x, 0, p), y: lerp(f.y, 0, p), r: lerp(f.r * f.s, 0, p) / lerp(f.s, 1, p) });
+            nextFrame(step);
+        };
+        nextFrame(step);
+    }
+
+    // The close transition takes the lifted window over on the same frame: the page is copied out
+    // of #content and drawn at the lift, so the header and #content go back to rest here.
+    function takeHomeLift() {
+        var f = homeLift;
+        homeLift = null;
+        if (f) swipeClear();
+        return f;
+    }
+
+    document.addEventListener('mouseup', swipeEnd);
+    document.addEventListener('mouseout', function (e) {
+        if (swipeDrag && leftPhone(e)) swipeEnd();
+    });
+    window.addEventListener('blur', swipeEnd);
+    swipeZone();
 
     // ------------------------------------------------------------------
     // Family
@@ -7606,6 +7809,15 @@
         };
     }
 
+    // Frame f of the close animation, eased in from a swipe's lift at p = 0.
+    function liftedFrame(lift, f, p) {
+        var s = lerp(lift.s, f.s, p);
+        var x = lerp(lift.x, f.x, p);
+        var y = lerp(lift.y, f.y, p);
+        var r = lerp(lift.r * lift.s, parseFloat(f.radius) * f.s, p) / s;
+        return { s: s, x: x, y: y, transform: 'translate(' + x + 'px, ' + y + 'px) scale(' + s + ')', radius: r + 'px' };
+    }
+
     function zoomAbout(icon, z) {
         var cx = icon.x + icon.w / 2;
         var cy = icon.y + icon.h / 2;
@@ -7672,6 +7884,8 @@
             page.style.opacity = '1';
         } else if (tr.kind === 'close') {
             f = cardFrame(icon, W, H, 1 - p);
+            // A swipe home: the page sets off from where the window was let go.
+            if (tr.lift) f = liftedFrame(tr.lift, f, p);
             setTransform(page, f.transform);
             if (tr.wall) {
                 paintWallpaper(page, tr.wallLeft, tr.wallTop,
@@ -7759,6 +7973,7 @@
         var bar = (kind === 'push' || kind === 'pop') && rootEl ? rootEl.querySelector('.ph-home') : null;
         var tr = { kind: kind, ghost: ghost, from: from, to: to, icon: icon, winIcon: winIcon,
             winW: winW, winH: winH, bar: bar, useStandIn: kind === 'launch',
+            lift: kind === 'close' ? closeLift : null,
             head: headIn > 0, headH: headIn, originSet: true,
             wall: (kind === 'launch' || kind === 'close') &&
                 appOfScreen(kind === 'launch' ? to : from) !== 'dreamcar',
@@ -12465,6 +12680,8 @@
         loadFails[screenId] = 0;
         var from = current;
         if (from === 'home') homeStop(true);
+        // A swipe home hands its lift to the close animation below (startTransition).
+        closeLift = takeHomeLift();
         var kind = transitionKind(from, screenId);
         if (kind === 'launch') {
             launchRects[screenId] = iconRect(screenId);
