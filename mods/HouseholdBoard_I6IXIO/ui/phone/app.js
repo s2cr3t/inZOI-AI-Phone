@@ -135,7 +135,7 @@
     ];
     // The installed apps in order, kept by the app registry (registerApp, appsRebuild).
     var APPS = [];
-    var TITLES = { family: 'Family', bonds: 'Bonds', work: 'Work', time: 'Time', jobs: 'Jobs', freelance: 'Freelance', texts: 'Texts', messages: 'Messages', chat: 'Chat', persona: 'Persona', moments: 'Moments', ai: 'AI', settings: 'Settings', sounds: 'Sounds', wallpaper: 'Wallpaper' };
+    var TITLES = { family: 'Family', bonds: 'Bonds', oa: 'OA', time: 'Time', jobs: 'Jobs', freelance: 'Freelance', texts: 'Texts', messages: 'Messages', chat: 'Chat', persona: 'Persona', moments: 'Moments', ai: 'AI', settings: 'Settings', sounds: 'Sounds', wallpaper: 'Wallpaper' };
     // Mailbox on disk, one folder per conversation:
     //   <mod>/ui/phone/sms/<playerId>-<contactId>/{outbox,inbox,seen,status}.cfg
     // The phone writes outbox (the person you are playing) and seen. The contact's replies go
@@ -146,6 +146,13 @@
     var SMS_SECTION = 'ui/phone/sms';
     var SMS_TEXT_MAX = 400;
     var SMS_KEEP = 200;
+    // A conversation opens on its newest SMS_PAGE messages; scrolling to the top (or the button
+    // there) adds SMS_PAGE more. Drawing a whole kept thread (both sides, up to several hundred
+    // bubbles) on every open and every new text is what made a tap on a thread hang in game.
+    var SMS_PAGE = 40;
+    var SMS_EARLIER_PX = 60;
+    // How long after the reader's own wheel or scrollbar drag a scroll still counts as theirs.
+    var SMS_READER_MS = 1200;
     // A time line goes above a message written this many game minutes after the one before it,
     // or on another game day. Times are game time: each message keeps { day, min } of the game
     // clock when it was written (game). Older messages have none and show no time.
@@ -240,6 +247,8 @@
     var l10nCache = {};
     var jobsMemberId = null;
     var smsDraft = '';
+    // { contactId, text } to put in the box when that chat opens next (OA drafts a request).
+    var smsPrefill = null;
     var smsFocused = false;
     var smsStick = true;
     var smsScroll = 0;
@@ -256,6 +265,11 @@
     // Message ids already drawn in the open thread. Null until the thread has been shown once,
     // so opening a chat does not play the entrance on its history.
     var smsArrived = null;
+    // How many of the newest messages the open thread shows: { section, count }.
+    var smsWindow = { section: '', count: SMS_PAGE };
+    var smsEarlierBusy = false;
+    var smsReaderAt = 0;
+    var smsChatData = null;
     var smsScrollRide = null;
     var smsContactId = null;
     var smsThread = null;
@@ -485,6 +499,8 @@
     }
 
     function forgetReads() { freshReads = {}; }
+
+    function forgetRead(key) { delete freshReads[key]; }
 
     function getPossessedId() {
         return cachedRead('played', 200, function () {
@@ -1301,7 +1317,7 @@
             glyphPath(svg, 'M12 3.1L3.6 10.2V20.4h6.1V14.6h4.6v5.8H20.4V10.2L12 3.1zM10.4 20.4v-4.4h3.2v4.4h-3.2z', '#ffffff', 'evenodd');
         } else if (id === 'bonds') {
             glyphPath(svg, 'M12 20.4s-6.6-4-8.8-7.7C1.5 9.6 2.2 6.2 4.9 5.1c1.8-.7 3.7-.1 4.9 1.6L12 8.8l2.2-2.1c1.2-1.7 3.1-2.3 4.9-1.6 2.7 1.1 3.4 4.5 1.7 7.6-2.2 3.7-8.8 7.7-8.8 7.7z');
-        } else if (id === 'work') {
+        } else if (id === 'oa') {
             glyphPath(svg, 'M4.2 8.2h15.6c.7 0 1.2.5 1.2 1.2v8.6c0 .7-.5 1.2-1.2 1.2H4.2c-.7 0-1.2-.5-1.2-1.2V9.4c0-.7.5-1.2 1.2-1.2zM3 11.6h18v1.5H3v-1.5z', '#ffffff', 'evenodd');
             glyphPath(svg, 'M9 8.2V6.3c0-.7.5-1.2 1.2-1.2h3.6c.7 0 1.2.5 1.2 1.2V8.2H9zM10.3 8.2V6.5c0-.2.2-.4.4-.4h2.6c.2 0 .4.2.4.4V8.2h-3.4z', '#ffffff', 'evenodd');
         } else if (id === 'jobs') {
@@ -1414,6 +1430,13 @@
     var homeDrag = null;
     var homeAnim = null;
     var homeDraggedAt = 0;
+    // Editing the home screen, as on the iPhone: a long press on any icon makes the icons jiggle,
+    // and every app that is not built in (system) shows a remove badge. Done, a tap on empty
+    // space, or leaving the home screen ends it.
+    var HOME_HOLD_MS = 600;
+    var homeEditing = false;
+    var homeHold = null;
+    var homeAlert = null;
     var homeWheel = { sum: 0, at: 0, lockedUntil: 0 };
     var homeRefreshWanted = false;
 
@@ -1439,13 +1462,104 @@
         var badge = homeBadge(data, app.id);
         if (badge > 0) tile.appendChild(node('div', 'ph-badge', badge > 9 ? '9+' : String(badge)));
         if (withLabel) tile.appendChild(node('div', 'ph-app-label', app.label));
+        var id = app.id;
+        if (!app.system) {
+            var del = tile.appendChild(node('div', 'ph-del', '−'));
+            del.setAttribute('title', 'Remove ' + app.label);
+            onTap(del, function (e) {
+                e.stopPropagation();
+                if (homeEditing) homeAskRemove(id);
+            });
+        }
+        tile.addEventListener('mousedown', function (e) {
+            if (e.button || homeEditing) return;
+            homeHoldCancel();
+            var hold = homeHold = { x: e.clientX, y: e.clientY, timer: 0 };
+            hold.timer = setTimeout(function () {
+                if (homeHold !== hold) return;
+                homeHold = null;
+                if (current !== 'home' || (homeDrag && homeDrag.moved)) return;
+                homeEditStart();
+            }, HOME_HOLD_MS);
+        });
         onTap(tile, function (e) {
             e.stopPropagation();
-            if (homeTapBlocked()) return;
+            // While editing (and for the click that ends the long press) an icon opens nothing.
+            if (homeEditing || homeTapBlocked()) return;
             soundPlay('tap');
-            open(app.id);
+            open(id);
         }, { silent: true });
         return tile;
+    }
+
+    function homeHoldCancel() {
+        if (!homeHold) return;
+        clearTimeout(homeHold.timer);
+        homeHold = null;
+    }
+
+    document.addEventListener('mousemove', function (e) {
+        var h = homeHold;
+        if (h && (Math.abs(e.clientX - h.x) > HOME_DRAG_START_PX || Math.abs(e.clientY - h.y) > HOME_DRAG_START_PX)) homeHoldCancel();
+    });
+    document.addEventListener('mouseup', homeHoldCancel);
+
+    function homeEditStart() {
+        if (homeEditing) return;
+        homeEditing = true;
+        if (homeView) homeView.wrap.classList.add('hs-editing');
+        traceNav('home editing');
+    }
+
+    function homeEditStop() {
+        homeHoldCancel();
+        homeAlertClose();
+        if (!homeEditing) return;
+        homeEditing = false;
+        if (homeView) homeView.wrap.classList.remove('hs-editing');
+    }
+
+    function homeAlertClose() {
+        var a = homeAlert;
+        homeAlert = null;
+        if (a && a.parentNode) a.parentNode.removeChild(a);
+    }
+
+    // The question before an app goes, as the iPhone asks it. The app is looked up by id when
+    // the answer comes: the home screen may have been drawn anew in between.
+    function homeAskRemove(id) {
+        var app = appRegistry[id];
+        if (!app || app.system || !appInstalled(id)) return;
+        homeAlertClose();
+        var veil = node('div', 'hs-alert-veil');
+        var box = veil.appendChild(node('div', 'hs-alert'));
+        var icon = box.appendChild(node('div', 'ph-icon hs-alert-icon ' + app.cls));
+        icon.appendChild(appGlyph(id));
+        box.appendChild(node('div', 'hs-alert-title', 'Remove “' + app.label + '”?'));
+        box.appendChild(node('div', 'hs-alert-text', 'It leaves the Home Screen. Get it again from the App Store any time; what it saved stays on the phone.'));
+        var yes = box.appendChild(node('div', 'hs-alert-btn danger', 'Delete App'));
+        var no = box.appendChild(node('div', 'hs-alert-btn', 'Cancel'));
+        onTap(yes, function (e) {
+            e.stopPropagation();
+            homeAlertClose();
+            var a = appRegistry[id];
+            if (!a || a.system || !appInstalled(id)) return;
+            appRemove(id);
+            setNote(a.label + ' removed. Get it again in the App Store.', false);
+            if (!APPS.some(function (x) { return !x.system; })) homeEditStop();
+            refresh();
+        });
+        onTap(no, function (e) {
+            e.stopPropagation();
+            homeAlertClose();
+        });
+        onTap(veil, function (e) {
+            e.stopPropagation();
+            if (e.target === veil) homeAlertClose();
+        });
+        var root = document.getElementById('app-root');
+        root.appendChild(veil);
+        homeAlert = veil;
     }
 
     // The Today page: the played character, its mood and needs.
@@ -1549,7 +1663,17 @@
     function renderHome(data) {
         var env = data.env;
         homeIcons = {};
-        var wrap = node('div', 'hs');
+        var wrap = node('div', 'hs' + (homeEditing ? ' hs-editing' : ''));
+        var done = wrap.appendChild(node('div', 'hs-done', 'Done'));
+        onTap(done, function (e) {
+            e.stopPropagation();
+            homeEditStop();
+        });
+        wrap.addEventListener('click', function (e) {
+            if (!homeEditing || homeTapBlocked()) return;
+            for (var t = e.target; t && t !== wrap; t = t.parentNode) if (t.nodeType === 1 && hasClass(t, 'ph-app')) return;
+            homeEditStop();
+        });
         var viewport = node('div', 'hs-viewport');
         var track = node('div', 'hs-track');
         viewport.appendChild(track);
@@ -1937,7 +2061,7 @@
 
     function swipeAllowed() {
         return current !== 'home' && !playedYoung && !transition && !homeLift &&
-            !dcCurtain && !txCurtain && !flCurtain && !nwCurtain &&
+            !dcCurtain && !txCurtain && !flCurtain && !nwCurtain && !oaCurtain &&
             !(wf.root && wf.root._minimized) && wf.content.style.display !== 'none';
     }
 
@@ -2960,51 +3084,988 @@
     }
 
     // ------------------------------------------------------------------
-    // Work
+    // OA: a workplace app laid out like a company's own (attendance, figures, notices, the
+    // workbench, approvals), filled from the game's career data.
+    // The member's career slot (FB2CareerComponent) names the company entity; its memberInfo
+    // holds everyone on the payroll with rank, exp, evaluation, attendance and leave left, and the
+    // Career table row holds the rank ladder (exp needed, pay a day, leave a year). The boss is
+    // the colleague with the highest rank above the member's own.
+    //
+    // Requests (leave, sick leave, remote work, promotion, resignation) are filled in on the
+    // approval form, kept as records and sent to the boss as a text. Files:
+    //   ui/phone/saved  oa-requests  the records. Phone only: { v, list: [{ id, member, kind,
+    //                   days, reason, text, boss, bossName, day, time, at, status }] },
+    //                   status pending | withdrawn.
+    //   ui/phone/oa     decisions    the boss's answers and how carrying them out in the game
+    //                   went. Reply service only (lib/career.js):
+    //                   { v, byId: { <request id>: { status: approved | rejected, note, at, day, days,
+    //                     effect: { state: applying | done | failed | unsupported, text } } } }.
+    // A decision outranks the record's own status; a withdrawn request takes none.
     // ------------------------------------------------------------------
-    function loadWork() {
-        return Promise.all([getEnv(), getMembers()]).then(function (r) {
+    var oaMemberId = null;
+    var oaApplyKind = 'leave';
+    var oaApplyDays = 1;
+    var oaApplyReason = 0;
+    var oaNameCache = {};
+    var oaRequests = null;
+    // How each colleague sees the member (ui/phone/oa/impressions.cfg, written by the reply
+    // service's workplace.js): { <member>-<colleague>: { score, label, style, styleName, events } }.
+    var oaImpressions = {};
+    // The tasks bosses handed out (ui/phone/oa/tasks.cfg, written by workgroup.js).
+    var oaTasks = [];
+    var OA_TASK_STATE = {
+        offered: { text: '待认领', cls: 'oa-tag' },
+        given: { text: '进行中', cls: 'pill-move' },
+        handed: { text: '交给别人了', cls: 'pill-idle' },
+        lapsed: { text: '没人接', cls: 'pill-idle' },
+        declined: { text: '没接', cls: 'pill-idle' },
+        done: { text: '已完成', cls: 'pill-work' },
+        missed: { text: '未完成', cls: 'pill-late' },
+        // An optional task left undone.
+        skipped: { text: '没做', cls: 'pill-idle' }
+    };
+    var OA_REQ_KEY = 'oa-requests';
+    var OA_SECTION = 'ui/phone/oa';
+    var OA_REQ_MAX = 40;
+    var OA_REQ_SHOWN = 5;
+    var OA_TEAM_MAX = 12;
+    var OA_SICK_DAYS_MAX = 3;
+    // Below this evaluation a boss is unlikely to hear of a promotion. A hint, not a game rule.
+    var OA_GOOD_EVALUATION = 60;
+    var OA_GRADES = [{ min: 90, g: 'S', tone: 'good' }, { min: 75, g: 'A', tone: 'good' }, { min: 60, g: 'B', tone: '' },
+        { min: 40, g: 'C', tone: 'warn' }, { min: -1000, g: 'D', tone: 'bad' }];
+    var OA_KINDS = [
+        { id: 'leave', label: '请假', form: '请假申请', mark: '假', color: '#30D158', days: true,
+            reasons: ['家里有事', '想休息几天', '出去走走', '陪陪家人'] },
+        { id: 'sick', label: '病假', form: '病假申请', mark: '病', color: '#FF375F', days: true,
+            reasons: ['发烧了', '身体不太舒服', '要去看医生'] },
+        { id: 'remote', label: '远程办公', form: '远程办公申请', mark: '远', color: '#64D2FF',
+            reasons: ['家里走不开', '在家效率更高', '身体不便出门'] },
+        { id: 'promote', label: '晋升申请', form: '晋升申请', mark: '升', color: '#FF9F0A',
+            reasons: ['最近业绩一直不错', '经验已经够了', '想承担更多'] },
+        { id: 'resign', label: '离职申请', form: '离职申请', mark: '离', color: '#8E8E93',
+            reasons: ['想换个环境', '找到了更好的机会', '想休息一阵'] }
+    ];
+    var OA_STATUS = {
+        pending: { text: '审批中', cls: 'pill-move' },
+        approved: { text: '已通过', cls: 'pill-work' },
+        rejected: { text: '已驳回', cls: 'pill-late' },
+        withdrawn: { text: '已撤回', cls: 'pill-idle' }
+    };
+    var OA_EFFECT = { applying: 'oa-eff-move', done: 'oa-eff-good', failed: 'oa-eff-bad', unsupported: 'oa-eff-idle' };
+    var OA_DAY_NAMES = { Monday: '一', Tuesday: '二', Wednesday: '三', Thursday: '四', Friday: '五', Saturday: '六', Sunday: '日' };
+    var OA_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    function oaKind(id) {
+        for (var i = 0; i < OA_KINDS.length; i++) if (OA_KINDS[i].id === id) return OA_KINDS[i];
+        return OA_KINDS[0];
+    }
+
+    function oaGrade(score) {
+        for (var i = 0; i < OA_GRADES.length; i++) if (score >= OA_GRADES[i].min) return OA_GRADES[i];
+        return OA_GRADES[OA_GRADES.length - 1];
+    }
+
+    // memberInfo is keyed by the printed FB1EntityId, "(Value=20522)".
+    function oaParseId(key) {
+        var m = /(\d+)/.exec(String(key));
+        return m ? m[1] : '';
+    }
+
+    function oaRankRow(ranks, rank) {
+        for (var i = 0; i < ranks.length; i++) if (ranks[i].rank === rank) return ranks[i];
+        return null;
+    }
+
+    function oaRelStat(rels, id, key) {
+        var x = rels[id];
+        var s = x && x.stats && x.stats[key];
+        return s && typeof s.value === 'number' ? s.value : 0;
+    }
+
+    function oaDays(days) {
+        if (!days || !days.length) return '不固定';
+        if (days.length === 7) return '每天';
+        var weekdays = days.length === 5 && WEEKDAYS.every(function (d) { return days.indexOf(d) >= 0; });
+        if (weekdays) return '周一至周五';
+        return '周' + days.map(function (d) { return OA_DAY_NAMES[d] || d; }).join('、');
+    }
+
+    // describe() says it in English for the other apps.
+    function oaState(work, sched, env) {
+        var s = describe(work, sched, env);
+        var text = { 'At work': '上班中', 'Commuting': '通勤中', 'Day off': '休息日', 'Not at work': '未到岗',
+            'Off shift': '不在班上', 'Done today': '已下班' }[s.text];
+        if (!text && /^Starts /.test(s.text)) text = s.text.slice(7) + ' 上班';
+        return { cls: s.cls, text: text || s.text };
+    }
+
+    function oaStatusOf(r, decisions) {
+        if (r.status === 'withdrawn') return 'withdrawn';
+        var d = decisions[r.id];
+        return d && OA_STATUS[d.status] ? d.status : 'pending';
+    }
+
+    function loadOa() {
+        return Promise.all([getEnv(), getMembers(), soft(getPossessedId()), loadPortraitIndex(),
+            cfgValue(SOUND_SECTION, OA_REQ_KEY), cfgValue(OA_SECTION, 'decisions'), cfgValue(OA_SECTION, 'impressions'), cfgValue(OA_SECTION, 'tasks')]).then(function (r) {
+            var env = r[0];
+            var played = r[2] && !r[2].error ? String(r[2]) : '';
             var workers = r[1].filter(function (m) { return !!m.has_career; });
+            oaRequests = r[4] && Array.isArray(r[4].list) ? r[4].list : [];
+            oaImpressions = r[6] && r[6].byPair && typeof r[6].byPair === 'object' ? r[6].byPair : {};
+            oaTasks = r[7] && Array.isArray(r[7].list) ? r[7].list : [];
+            var decisions = r[5] && r[5].byId && typeof r[5].byId === 'object' ? r[5].byId : {};
+            // First the played character's job, else the first real job at home: a pupil's desk
+            // has nothing on it yet.
+            if (!memberById(workers, oaMemberId)) {
+                var employed = workers.filter(function (m) { return !!m.job_name; });
+                oaMemberId = memberById(employed, played) ? played
+                    : employed.length ? String(employed[0].entity_id)
+                    : memberById(workers, played) ? played
+                    : workers.length ? String(workers[0].entity_id) : null;
+            }
+            var member = memberById(workers, oaMemberId);
             return Promise.all([
                 getWorkStatus(workers),
-                Promise.all(workers.map(function (m) { return soft(loadSchedule(m)); }))
+                Promise.all(workers.map(function (m) { return soft(loadSchedule(m)); })),
+                member ? soft(oaLoadDesk(member, played)) : Promise.resolve(null)
             ]).then(function (d) {
-                return { env: r[0], workers: workers, work: d[0], schedules: d[1] };
+                var requests = oaRequests.filter(function (x) { return member && x.member === String(member.entity_id); })
+                    .map(function (x) { return { r: x, status: oaStatusOf(x, decisions), decision: decisions[x.id] || null }; });
+                requests.sort(function (a, b) { return (b.r.at || 0) - (a.r.at || 0); });
+                return { env: env, played: played, workers: workers, work: d[0], schedules: d[1], member: member,
+                    desk: d[2], requests: requests };
             });
         });
     }
 
-    function renderWork(data) {
-        var wrap = node('div');
-        wrap.appendChild(subHeader('work'));
-        if (!data.workers.length) {
-            var none = card();
-            none.appendChild(node('div', 'ph-empty', 'Nobody in this household has a job.'));
-            wrap.appendChild(none);
-            return wrap;
+    function oaImpression(memberId, colleagueId) {
+        var e = oaImpressions[String(memberId) + '-' + String(colleagueId)];
+        return e && typeof e.score === 'number' ? e : null;
+    }
+
+    // 待办: what the boss handed out in the work group, as the game's own after-work missions.
+    function oaTaskCard(desk) {
+        var mine = oaTasks.filter(function (t) { return t && String(t.member) === String(desk.memberId); }).slice().reverse();
+        var c = card('待办');
+        if (!mine.length) {
+            c.appendChild(node('div', 'ph-caption', '上级会在工作群里问谁来做。你回复「我来」接下以后，任务会出现在游戏的任务栏「工作」里，用电脑做完就算完成。'));
+            return c;
         }
-        data.workers.forEach(function (m, idx) {
-            var sched = data.schedules[idx];
-            var validSched = sched && !sched.error ? sched : null;
-            var work = data.work[String(m.entity_id)];
-            var state = describe(work, validSched, data.env);
-            var c = card();
-            c.appendChild(personRow(m, [m.job_name, m.job_rank_name],
-                node('span', 'ph-pill ' + state.cls, state.text)));
-            if (validSched) {
-                c.appendChild(node('div', 'ph-hours',
-                    minutesToLabel(validSched.start) + ' - ' + minutesToLabel(validSched.end)));
-                c.appendChild(joinWithDots(node('div', 'ph-sub'),
-                    [dayLabel(validSched.days), validSched.remote ? 'Remote OK' : 'On site']));
-                var active = work && !work.error ? !!work.is_working_day : true;
-                c.appendChild(timeline(validSched, data.env, accentFor(m.entity_id), active));
-            } else {
-                var msg = node('div', 'ph-empty', sched && sched.error ? sched.error : 'Hours unavailable');
-                msg.style.marginTop = '10px';
-                c.appendChild(msg);
+        mine.slice(0, 4).forEach(function (t) {
+            var row = node('div', 'ph-row oa-req');
+            row.appendChild(oaMark('任', '#0A84FF', 'oa-req-mark'));
+            var who = node('div', 'ph-who');
+            who.appendChild(node('div', 'oa-req-title', String(t.text || '')));
+            who.appendChild(node('div', 'ph-sub', [t.optional ? '可选' : '', t.bossName ? t.bossName + (t.state === 'offered' ? ' 在群里问' : ' 派的') : '', typeof t.day === 'number' ? '第 ' + t.day + ' 天' : ''].filter(Boolean).join(' · ')));
+            if (t.state === 'offered') who.appendChild(node('div', 'oa-req-note', '在工作群里回复「我来」就能接下；不想接不用理。'));
+            if (t.state === 'handed' && t.taker) who.appendChild(node('div', 'oa-req-note', '没人接，交给了' + t.taker + '。'));
+            row.appendChild(who);
+            var st = OA_TASK_STATE[t.optional && t.state === 'missed' ? 'skipped' : t.state] || OA_TASK_STATE.given;
+            row.appendChild(node('span', 'ph-pill ' + st.cls, st.text));
+            c.appendChild(row);
+        });
+        return c;
+    }
+
+    // The boss, the kind of boss they are, and what they think of the member and why.
+    function oaBossCard(desk) {
+        var c = card('我的上级');
+        var boss = desk.boss;
+        if (!boss) {
+            c.appendChild(node('div', 'ph-caption', desk.readable ? '你已经是这里职级最高的人。' : '公司的人员名单读不到。'));
+            return c;
+        }
+        var seen = oaImpression(desk.memberId, boss.id);
+        var row = node('div', 'ph-row oa-person');
+        row.appendChild(faceAvatar(boss.person));
+        var who = node('div', 'ph-who');
+        who.appendChild(node('div', 'ph-name', fullName(boss.person)));
+        who.appendChild(node('div', 'ph-sub', boss.rankName));
+        row.appendChild(who);
+        if (seen && seen.styleName) row.appendChild(node('span', 'ph-pill oa-style', seen.styleName));
+        c.appendChild(row);
+        if (!seen) {
+            c.appendChild(node('div', 'ph-caption', '还没打过交道。跟上级聊几句、提一次申请，就知道 TA 对你印象如何。'));
+            return c;
+        }
+        var line = node('div', 'oa-progress-head');
+        line.appendChild(node('span', null, '对你的印象：' + seen.label));
+        line.appendChild(node('span', 'oa-progress-num oa-imp-num', seen.score + ' / 100'));
+        c.appendChild(line);
+        c.appendChild(bar(seen.score, seen.score >= 65 ? '#30D158' : seen.score >= 45 ? '#0A84FF' : seen.score >= 30 ? '#FF9F0A' : '#FF453A'));
+        (Array.isArray(seen.events) ? seen.events : []).slice().reverse().forEach(function (ev) {
+            var e = node('div', 'oa-imp-event');
+            e.appendChild(node('span', 'oa-imp-delta ' + (ev.delta > 0 ? 'up' : 'down'), (ev.delta > 0 ? '+' : '') + ev.delta));
+            e.appendChild(node('span', 'oa-imp-why', ev.why || ''));
+            c.appendChild(e);
+        });
+        return c;
+    }
+
+    function oaSaveRequests() {
+        return saveJson(OA_REQ_KEY, { v: 1, list: oaRequests.slice(-OA_REQ_MAX) }, SOUND_SECTION);
+    }
+
+    // Changes one request by its id in the list as it is now. A row's button cannot hold on to
+    // the record it was drawn from: the poll re-reads the list into new objects every few seconds
+    // and keeps the unchanged button (morph), so that record is no longer the one that is saved.
+    function oaChangeRequest(id, patch) {
+        var list = oaRequests || [];
+        for (var i = 0; i < list.length; i++) {
+            if (list[i] && list[i].id === id) {
+                for (var k in patch) if (patch.hasOwnProperty(k)) list[i][k] = patch[k];
+                oaSaveRequests().then(refresh, refresh);
+                return;
             }
+        }
+        setNote('这条申请已经找不到了。', true);
+    }
+
+    function oaLoadDesk(member, played) {
+        var id = String(member.entity_id);
+        return loadCareerSlot(id).then(function (slot) {
+            if (!slot) return { none: true };
+            var companyId = slot.careerEntityId && slot.careerEntityId.value;
+            return Promise.all([
+                loadCareerRow(slot.careerDtId),
+                companyId ? soft(call('entity.reflect', { entity_id: String(companyId) }, 'memberInfo')) : Promise.resolve(null),
+                soft(call('relationships.list', { owner_id: id }, 'relationships')),
+                // Only the played character's phone has a contact list, and only they text outside.
+                id === played ? soft(call('contacts.get_all', {}, 'contacts')) : Promise.resolve(null)
+            ]).then(function (r) {
+                var row = r[0];
+                var org = findOrg(row, slot.jobDtId);
+                var company = r[1] && !r[1].error ? r[1] : null;
+                var rels = {};
+                (r[2] && !r[2].error && Array.isArray(r[2].relationships) ? r[2].relationships : [])
+                    .forEach(function (x) { rels[String(x.target_id)] = x; });
+                var contacts = r[3] && !r[3].error && Array.isArray(r[3].contacts) ? r[3].contacts : [];
+                var keys = [row.displayName];
+                (org && org.rankList ? org.rankList : []).forEach(function (k) { keys.push(k.rankName); });
+                var ids = company ? Object.keys(company.memberInfo || {}).map(oaParseId)
+                    .filter(function (x) { return x && x !== id; }) : [];
+                return Promise.all([localize(keys), oaNames(ids.slice(0, OA_TEAM_MAX), contacts)]).then(function (t) {
+                    return oaDesk(member, played, slot, row, org, company, rels, t[0], t[1]);
+                });
+            });
+        });
+    }
+
+    // Names and faces of colleagues: the contact list first, else the game's character info,
+    // which is kept for the session (names do not change while the game runs).
+    function oaNames(ids, contacts) {
+        var byId = {};
+        contacts.forEach(function (c) { byId[String(c.entity_id)] = c; });
+        return Promise.all(ids.map(function (pid) {
+            if (byId[pid]) return Promise.resolve({ id: pid, person: byId[pid], contact: byId[pid] });
+            if (oaNameCache[pid]) return Promise.resolve({ id: pid, person: oaNameCache[pid], contact: null });
+            return soft(call('entity.get_character_info', { entity_id: pid }, 'entity_id')).then(function (c) {
+                if (!c || c.error) return { id: pid, person: null, contact: null };
+                oaNameCache[pid] = c;
+                return { id: pid, person: c, contact: null };
+            });
+        })).then(function (list) {
+            var map = {};
+            list.forEach(function (x) { map[x.id] = x; });
+            return map;
+        });
+    }
+
+    // Everything the OA pages show about one member's job, as plain values.
+    function oaDesk(member, played, slot, row, org, company, rels, text, names) {
+        var id = String(member.entity_id);
+        if (slot.slotType && slot.slotType !== 'Business') {
+            return { school: true, place: text[row.displayName] || slot.careerDtId };
+        }
+        var ranks = (org && org.rankList ? org.rankList : []).slice().sort(function (a, b) { return a.rank - b.rank; });
+        var rankName = function (n) {
+            var x = oaRankRow(ranks, n);
+            return x ? text[x.rankName] || '' : '';
+        };
+        var info = company ? company.memberInfo || {} : {};
+        var mine = null;
+        var team = [];
+        Object.keys(info).forEach(function (k) {
+            var pid = oaParseId(k);
+            var m = info[k];
+            if (!pid || !m) return;
+            if (pid === id) { mine = m; return; }
+            var found = names[pid];
+            if (!found) return;
+            team.push({
+                id: pid, rank: Number(m.rank) || 0, rankName: rankName(Number(m.rank) || 0),
+                attendance: Number(m.attendanceDays) || 0,
+                person: found.person || { entity_id: pid }, contact: found.contact,
+                business: oaRelStat(rels, pid, 'Business')
+            });
+        });
+        var rank = Number(mine ? mine.rank : slot.rank) || 0;
+        var exp = Number(mine ? mine.exp : slot.exp) || 0;
+        var cur = oaRankRow(ranks, rank);
+        var next = oaRankRow(ranks, rank + 1);
+        team.sort(function (a, b) { return b.rank - a.rank || b.business - a.business; });
+        var above = team.filter(function (t) { return t.rank > rank; });
+        var boss = above.length ? above[0] : null;
+        if (boss) boss.boss = true;
+        var phoneOk = id === played && !NO_PHONE_STEPS[member.age_group];
+        return {
+            memberId: id,
+            company: text[row.displayName] || slot.careerDtId,
+            job: member.job_name || '',
+            rank: rank,
+            maxRank: ranks.length ? ranks[ranks.length - 1].rank : rank,
+            rankName: rankName(rank) || member.job_rank_name || '',
+            nextRankName: next ? rankName(next.rank) : '',
+            exp: exp,
+            expFrom: cur ? Number(cur.requireTotalExp) || 0 : 0,
+            expTo: next ? Number(next.requireTotalExp) || 0 : 0,
+            salary: cur && cur.shift ? Number(cur.shift.salaryPerDay) || 0 : 0,
+            nextSalary: next && next.shift ? Number(next.shift.salaryPerDay) || 0 : 0,
+            ladder: ranks.map(function (x) {
+                return { rank: x.rank, name: rankName(x.rank), exp: Number(x.requireTotalExp) || 0,
+                    salary: x.shift ? Number(x.shift.salaryPerDay) || 0 : 0, leave: Number(x.baseVacationDays) || 0 };
+            }),
+            workDays: org && org.workDays ? org.workDays.length : 0,
+            leaveLeft: mine ? Number(mine.remainingVacationDays) || 0 : null,
+            leaveYear: cur ? Number(cur.baseVacationDays) || 0 : 0,
+            leaveBooked: mine ? Number(mine.vacationScheduledDays) || 0 : 0,
+            evaluation: Number(mine ? mine.evaluationScore : slot.evaluationScore) || 0,
+            attendance: mine ? Number(mine.attendanceDays) || 0 : null,
+            unexcused: mine ? Number(mine.unexcusedAbsenceCount) || 0 : 0,
+            absentRun: mine ? Number(mine.consecutiveAbsenceDays) || 0 : 0,
+            remoteNow: !!(mine && mine.activeWorkMode === 'Remote'),
+            remoteOk: !!(org && org.bCanRemoteWork),
+            boss: boss,
+            bossTextable: !!(boss && boss.contact && phoneOk && !NO_PHONE_STEPS[boss.contact.age_group]),
+            phoneOk: phoneOk,
+            team: team,
+            readable: !!mine
+        };
+    }
+
+    // Why the boss cannot be texted from here, or '' when they can.
+    function oaBossBlock(desk) {
+        if (!desk.boss) return desk.readable ? '你已经是这里职级最高的人，没有上级。' : '公司的人员名单读不到，找不到上级。';
+        if (!desk.phoneOk) return '只有你正在操作的角色能给上级发消息。';
+        if (!desk.boss.contact) return '上级还不在你的手机通讯录里。在游戏里和 TA 聊过、交换联系方式以后就能发消息。';
+        if (!desk.bossTextable) return '上级现在没法用手机。';
+        return '';
+    }
+
+    // Opens the chat with the boss, with text waiting in the box when there is any.
+    function oaOpenChat(data, desk, text) {
+        var boss = desk.boss;
+        if (!boss || !desk.bossTextable) return;
+        smsPrefill = text ? { contactId: boss.id, text: text } : null;
+        var go = function () {
+            smsContactId = boss.id;
+            open('chat');
+        };
+        addOutside(data.played, boss.contact, '上级').then(go, go);
+    }
+
+    // Chips in rows of a fixed count. cohtml does not grow a wrapping flex box with chips sized by
+    // their text (they stretch and spill out of the card), so each row is its own one-line box.
+    function oaChipRows(chips, perRow) {
+        var box = node('div', 'oa-chips');
+        var row = null;
+        chips.forEach(function (chip, i) {
+            if (i % perRow === 0) row = box.appendChild(node('div', 'oa-chip-row'));
+            row.appendChild(chip);
+        });
+        return box;
+    }
+
+    function oaNotice(wrap, text) {
+        var c = card();
+        c.appendChild(node('div', 'ph-empty', text));
+        wrap.appendChild(c);
+        return wrap;
+    }
+
+    function oaSection(title, more, onMore) {
+        var head = node('div', 'oa-sec');
+        head.appendChild(node('div', 'oa-sec-title', title));
+        if (more) {
+            var link = head.appendChild(node('div', 'oa-sec-more', more + ' ›'));
+            onTap(link, function (e) {
+                e.stopPropagation();
+                onMore();
+            });
+        }
+        return head;
+    }
+
+    function oaMark(text, color, cls) {
+        var m = node('div', 'oa-mark' + (cls ? ' ' + cls : ''), text);
+        m.style.background = color;
+        return m;
+    }
+
+    // ---------- the workbench (home page) ----------
+
+    // The company's letterhead: logo, name, the member's badge and who else at home works.
+    function oaBrand(data, desk) {
+        var c = node('div', 'ph-card oa-brand');
+        var top = node('div', 'ph-row');
+        top.appendChild(oaMark(desk.company.charAt(0), accentFor(desk.company.length * 7 + desk.company.charCodeAt(0)), 'oa-logo'));
+        var who = node('div', 'ph-who');
+        who.appendChild(node('div', 'oa-company', desk.company));
+        who.appendChild(node('div', 'oa-badge', '工号 ' + desk.memberId + ' · ' + desk.job));
+        top.appendChild(who);
+        c.appendChild(top);
+        var me = node('div', 'ph-row oa-me');
+        me.appendChild(faceAvatar(data.member));
+        var name = node('div', 'ph-who');
+        name.appendChild(node('div', 'ph-name', fullName(data.member)));
+        name.appendChild(node('div', 'ph-sub', desk.rankName + ' · 第 ' + desk.rank + ' 级'));
+        me.appendChild(name);
+        if (data.workers.length > 1) me.appendChild(oaPeople(data));
+        c.appendChild(me);
+        return c;
+    }
+
+    // Small faces to switch whose workbench this is.
+    function oaPeople(data) {
+        var row = node('div', 'oa-people');
+        data.workers.forEach(function (m) {
+            var id = String(m.entity_id);
+            if (id === oaMemberId) return;
+            var face = faceAvatar(m);
+            face.className += ' oa-person-face';
+            onTap(face, function (e) {
+                e.stopPropagation();
+                oaMemberId = id;
+                setNote('', false);
+                refresh();
+            });
+            row.appendChild(face);
+        });
+        return row;
+    }
+
+    // Attendance as a clock-in card: today's state in the dial, the two punches beside it and the
+    // week underneath.
+    function oaClock(data, desk) {
+        var m = data.member;
+        var idx = data.workers.indexOf(m);
+        var sched = data.schedules[idx];
+        var validSched = sched && !sched.error ? sched : null;
+        var work = data.work[String(m.entity_id)];
+        var known = work && !work.error;
+        var state = oaState(work, validSched, data.env);
+        var c = card('考勤打卡');
+        var row = node('div', 'ph-row oa-clock');
+        var dial = node('div', 'oa-dial ' + state.cls);
+        dial.appendChild(node('div', 'oa-dial-state', state.text));
+        dial.appendChild(node('div', 'oa-dial-time', clockText(data.env)));
+        row.appendChild(dial);
+        var punches = node('div', 'ph-who');
+        var now = envMinutes(data.env);
+        var workday = known ? !!work.is_working_day : !!(validSched && validSched.days.indexOf(data.env.day_of_week) >= 0);
+        var started = validSched && now !== null && now >= validSched.start;
+        var ended = validSched && now !== null && validSched.end > validSched.start && now >= validSched.end;
+        var inText = !workday ? '休息' : known && work.is_at_work ? '已到岗' : ended ? '已打卡' : started ? '未到岗' : '未开始';
+        var outText = !workday ? '休息' : ended ? '已下班' : '未开始';
+        punches.appendChild(oaPunch('上班', validSched ? minutesToLabel(validSched.start) : '--:--', inText, inText === '未到岗' ? 'bad' : inText === '已到岗' || inText === '已打卡' ? 'good' : ''));
+        punches.appendChild(oaPunch('下班', validSched ? minutesToLabel(validSched.end) : '--:--', outText, outText === '已下班' ? 'good' : ''));
+        punches.appendChild(node('div', 'oa-clock-mode', desk.remoteNow ? '今天远程办公' : desk.remoteOk ? '到岗办公 · 可申请远程' : '到岗办公'));
+        row.appendChild(punches);
+        c.appendChild(row);
+        c.appendChild(oaWeek(validSched, data.env));
+        return c;
+    }
+
+    function oaPunch(label, time, text, tone) {
+        var p = node('div', 'oa-punch');
+        p.appendChild(node('span', 'oa-punch-label', label));
+        p.appendChild(node('span', 'oa-punch-time', time));
+        p.appendChild(node('span', 'oa-punch-state' + (tone ? ' ' + tone : ''), text));
+        return p;
+    }
+
+    function oaWeek(sched, env) {
+        var week = node('div', 'oa-week');
+        OA_WEEK.forEach(function (d) {
+            var cell = node('div', 'oa-day' + (env && env.day_of_week === d ? ' today' : ''));
+            cell.appendChild(node('div', 'oa-day-name', OA_DAY_NAMES[d]));
+            var on = sched && sched.days.indexOf(d) >= 0;
+            cell.appendChild(node('div', 'oa-day-dot' + (on ? ' on' : ''), on ? '班' : '休'));
+            week.appendChild(cell);
+        });
+        return week;
+    }
+
+    function oaKpi(value, label, tone) {
+        var k = node('div', 'oa-kpi');
+        k.appendChild(node('div', 'oa-kpi-val' + (tone ? ' ' + tone : ''), value));
+        k.appendChild(node('div', 'oa-kpi-label', label));
+        return k;
+    }
+
+    function oaBoard(desk) {
+        var c = card('数据看板');
+        var row = node('div', 'oa-kpis');
+        var grade = oaGrade(desk.evaluation);
+        row.appendChild(oaKpi(grade.g, '绩效 ' + desk.evaluation, grade.tone));
+        row.appendChild(oaKpi(desk.attendance === null ? '-' : String(desk.attendance), '出勤天数'));
+        row.appendChild(oaKpi(desk.leaveLeft === null ? '-' : String(desk.leaveLeft), '年假余额'));
+        row.appendChild(oaKpi(String(desk.unexcused), '旷工', desk.unexcused ? 'bad' : ''));
+        c.appendChild(row);
+        if (desk.nextRankName) {
+            var span = desk.expTo - desk.expFrom;
+            var pct = span > 0 ? (desk.exp - desk.expFrom) / span * 100 : 100;
+            var line = node('div', 'oa-progress-head');
+            line.appendChild(node('span', null, '晋升「' + desk.nextRankName + '」'));
+            line.appendChild(node('span', 'oa-progress-num', desk.exp + ' / ' + desk.expTo));
+            c.appendChild(line);
+            c.appendChild(bar(pct, '#FF9F0A'));
+        }
+        return c;
+    }
+
+    // Notices the company would send: what is worth acting on now.
+    function oaNotices(desk, requests) {
+        var out = [];
+        var pending = requests.filter(function (x) { return x.status === 'pending'; }).length;
+        if (pending) out.push({ tone: 'move', text: '有 ' + pending + ' 个申请在等上级审批。' });
+        requests.forEach(function (x) {
+            if (!x.decision || out.length >= 3 || x.status === 'pending') return;
+            var eff = x.decision.effect;
+            if (eff && eff.state === 'failed') out.push({ tone: 'bad', text: oaKind(x.r.kind).form + '批了，但' + (eff.text || '游戏里没办成') + '。' });
+            else out.push({ tone: x.status === 'approved' ? 'good' : 'bad', text: oaKind(x.r.kind).form + (x.status === 'approved' ? '已通过' : '被驳回') + (x.decision.note ? '：' + x.decision.note : '。') });
+        });
+        if (desk.nextRankName && desk.exp >= desk.expTo) out.push({ tone: 'good', text: '晋升「' + desk.nextRankName + '」的经验已经够了，可以发起晋升申请。' });
+        if (desk.unexcused) out.push({ tone: 'bad', text: '你有 ' + desk.unexcused + ' 次旷工记录，会影响绩效和审批。' });
+        if (desk.absentRun > 1) out.push({ tone: 'bad', text: '已经连续 ' + desk.absentRun + ' 天没来上班。' });
+        if (desk.leaveLeft) out.push({ tone: '', text: '年假还有 ' + desk.leaveLeft + ' 天没休。' });
+        return out.slice(0, 3);
+    }
+
+    function oaNoticeCard(desk, requests) {
+        var list = oaNotices(desk, requests);
+        if (!list.length) return null;
+        var c = node('div', 'ph-card oa-notices');
+        list.forEach(function (n) {
+            var line = node('div', 'oa-notice');
+            line.appendChild(node('span', 'oa-notice-dot ' + (n.tone || 'info')));
+            line.appendChild(node('span', 'oa-notice-text', n.text));
+            c.appendChild(line);
+        });
+        return c;
+    }
+
+    function oaHint(kind, desk) {
+        if (kind.id === 'leave') return desk.leaveLeft === null ? '' : '余 ' + desk.leaveLeft + ' 天';
+        if (kind.id === 'sick') return '不占年假';
+        if (kind.id === 'remote') return !desk.remoteOk ? '不支持' : desk.remoteNow ? '远程中' : '可申请';
+        if (kind.id === 'promote') {
+            if (!desk.nextRankName) return '已到顶';
+            return desk.exp >= desk.expTo ? '可申请' : '差 ' + (desk.expTo - desk.exp);
+        }
+        return '';
+    }
+
+    function oaApp(text, mark, color, hint, onOpen) {
+        var tile = node('div', 'oa-app');
+        tile.appendChild(oaMark(mark, color, 'oa-app-mark'));
+        tile.appendChild(node('div', 'oa-app-label', text));
+        tile.appendChild(node('div', 'oa-app-hint', hint || ''));
+        onTap(tile, function (e) {
+            e.stopPropagation();
+            onOpen();
+        });
+        return tile;
+    }
+
+    function oaApps(data, desk) {
+        var c = card('工作台');
+        var grid = node('div', 'oa-apps');
+        OA_KINDS.forEach(function (k) {
+            grid.appendChild(oaApp(k.label, k.mark, k.color, oaHint(k, desk), function () {
+                oaApplyKind = k.id;
+                oaApplyDays = 1;
+                oaApplyReason = 0;
+                open('oaApply');
+            }));
+        });
+        var block = oaBossBlock(desk);
+        grid.appendChild(oaApp('联系上级', '聊', '#0A84FF', block ? '不可用' : desk.boss ? fullName(desk.boss.person) : '', function () {
+            if (block) setNote(block, false);
+            else oaOpenChat(data, desk, '');
+        }));
+        grid.appendChild(oaApp('组织架构', '组', '#5E5CE6', desk.team.length + 1 + ' 人', function () { open('oaOrg'); }));
+        grid.appendChild(oaApp('薪酬职级', '薪', '#BF5AF2', '日薪 ' + desk.salary, function () { open('oaPay'); }));
+        c.appendChild(grid);
+        return c;
+    }
+
+    function oaRequestRow(x, withdraw) {
+        var kind = oaKind(x.r.kind);
+        var row = node('div', 'ph-row oa-req');
+        row.appendChild(oaMark(kind.mark, kind.color, 'oa-req-mark'));
+        var who = node('div', 'ph-who');
+        who.appendChild(node('div', 'oa-req-title', kind.form + (x.r.days ? ' · ' + x.r.days + ' 天' : '')));
+        who.appendChild(node('div', 'ph-sub', [x.r.day ? '第 ' + x.r.day + ' 天' : '', x.r.time || '', x.r.reason || ''].filter(Boolean).join(' · ')));
+        if (x.decision && x.decision.note) who.appendChild(node('div', 'oa-req-note', '批复：' + x.decision.note));
+        // How the game carried out what the boss granted (lib/career.js).
+        var eff = x.status === 'approved' && x.decision && x.decision.effect;
+        if (eff && OA_EFFECT[eff.state]) who.appendChild(node('div', 'oa-req-eff ' + OA_EFFECT[eff.state], (eff.state === 'applying' ? '办理中：' : '办理：') + (eff.text || '')));
+        row.appendChild(who);
+        var st = OA_STATUS[x.status];
+        var side = node('div', 'oa-req-side');
+        side.appendChild(node('span', 'ph-pill ' + st.cls, st.text));
+        var id = x.r.id;
+        if (x.status === 'pending' && withdraw) {
+            var undo = side.appendChild(node('div', 'oa-req-undo', '撤回'));
+            onTap(undo, function (e) {
+                e.stopPropagation();
+                oaChangeRequest(id, { status: 'withdrawn' });
+            });
+        }
+        // Granted but not carried out: the reply service tries again once the record says so.
+        var asked = eff && eff.state === 'failed' && Number(x.r.retry) > (Number(eff.at) || 0);
+        if (eff && eff.state === 'failed' && withdraw) {
+            var again = side.appendChild(node('div', 'oa-req-undo', asked ? '已重新提交' : '重新办理'));
+            if (!asked) {
+                onTap(again, function (e) {
+                    e.stopPropagation();
+                    oaChangeRequest(id, { retry: Date.now() });
+                });
+            }
+        }
+        row.appendChild(side);
+        return row;
+    }
+
+    function oaRequestCard(data) {
+        var c = card('我的申请');
+        if (!data.requests.length) {
+            c.appendChild(node('div', 'ph-caption', '还没有提交过申请。在工作台选一项，填好就能提交给上级。'));
+            return c;
+        }
+        data.requests.slice(0, OA_REQ_SHOWN).forEach(function (x) { c.appendChild(oaRequestRow(x, true)); });
+        if (data.requests.length > OA_REQ_SHOWN) c.appendChild(node('div', 'ph-caption', '只显示最近 ' + OA_REQ_SHOWN + ' 条，共 ' + data.requests.length + ' 条。'));
+        return c;
+    }
+
+    // Who else at home is at work right now: what the old Work app showed.
+    function oaFamilyCard(data) {
+        var others = data.workers.filter(function (m) { return m !== data.member; });
+        if (!others.length) return null;
+        var c = card('家人出勤');
+        others.forEach(function (m) {
+            var idx = data.workers.indexOf(m);
+            var sched = data.schedules[idx];
+            var state = oaState(data.work[String(m.entity_id)], sched && !sched.error ? sched : null, data.env);
+            var row = personRow(m, [m.job_name || '上学', m.job_rank_name], node('span', 'ph-pill ' + state.cls, state.text));
+            row.className += ' oa-person';
+            row.replaceChild(faceAvatar(m), row.firstChild);
+            onTap(row, function (e) {
+                e.stopPropagation();
+                oaMemberId = String(m.entity_id);
+                refresh();
+            });
+            c.appendChild(row);
+        });
+        return c;
+    }
+
+    function renderOa(data) {
+        var wrap = node('div', 'oa-screen');
+        wrap.appendChild(subHeader('oa'));
+        if (!data.workers.length) return oaNotice(wrap, '家里还没有人有工作。去「Jobs」找一份吧。');
+        var desk = data.desk;
+        var name = fullName(data.member);
+        if (!desk || desk.error || desk.none || desk.school) {
+            if (!desk || desk.error) oaNotice(wrap, '读不到' + name + '的工作资料。' + (desk && desk.error ? desk.error : ''));
+            else if (desk.none) oaNotice(wrap, name + '现在没有工作。');
+            else oaNotice(wrap, name + '在' + desk.place + '上学。OA 只管上班的事，上学请假以后再接入。');
+        } else {
+            wrap.appendChild(oaBrand(data, desk));
+            var notices = oaNoticeCard(desk, data.requests);
+            if (notices) wrap.appendChild(notices);
+            wrap.appendChild(oaClock(data, desk));
+            wrap.appendChild(oaBoard(desk));
+            wrap.appendChild(oaBossCard(desk));
+            wrap.appendChild(oaTaskCard(desk));
+            wrap.appendChild(oaApps(data, desk));
+            wrap.appendChild(oaRequestCard(data));
+        }
+        var family = oaFamilyCard(data);
+        if (family) wrap.appendChild(family);
+        return wrap;
+    }
+
+    // ---------- the approval form ----------
+
+    // What the boss will look at, as { ok: true | false | null, text }; null is just a fact.
+    // The reply service is to apply the same rules before a request is granted in the game.
+    function oaChecks(kind, desk, days) {
+        var out = [];
+        if (kind.id === 'leave') {
+            out.push({ ok: desk.leaveLeft !== null && desk.leaveLeft >= days, text: '年假余额 ' + (desk.leaveLeft === null ? '?' : desk.leaveLeft) + ' 天，本次 ' + days + ' 天' });
+            out.push({ ok: desk.unexcused === 0, text: desk.unexcused ? '有 ' + desk.unexcused + ' 次旷工记录' : '无旷工记录' });
+        } else if (kind.id === 'sick') {
+            out.push({ ok: null, text: '病假不占年假，单次最多 ' + OA_SICK_DAYS_MAX + ' 天' });
+            out.push({ ok: null, text: '真的生病了才批得下来，装病会被看穿' });
+            out.push({ ok: desk.unexcused === 0, text: desk.unexcused ? '有 ' + desk.unexcused + ' 次旷工记录，上级可能会怀疑' : '无旷工记录' });
+        } else if (kind.id === 'remote') {
+            out.push({ ok: desk.remoteOk, text: desk.remoteOk ? '岗位允许远程办公' : '岗位必须到岗' });
+            if (desk.remoteNow) out.push({ ok: null, text: '当前已在远程办公' });
+            out.push({ ok: null, text: '游戏里暂时不能切换远程办公，批了也只是口头同意' });
+        } else if (kind.id === 'promote') {
+            out.push({ ok: !!desk.nextRankName, text: desk.nextRankName ? '下一级「' + desk.nextRankName + '」' : '已是最高职级' });
+            if (desk.nextRankName) out.push({ ok: desk.exp >= desk.expTo, text: '经验 ' + desk.exp + ' / ' + desk.expTo });
+            out.push({ ok: desk.evaluation >= OA_GOOD_EVALUATION, text: '绩效 ' + oaGrade(desk.evaluation).g + '（' + desk.evaluation + ' 分）' });
+        } else if (kind.id === 'resign') {
+            out.push({ ok: null, text: '离职后将离开' + desk.company + '，职级和经验不保留' });
+        }
+        return out;
+    }
+
+    // How likely the boss is to say yes, from the checks: any failed rule makes it unlikely.
+    function oaOdds(checks) {
+        var rules = checks.filter(function (x) { return x.ok !== null; });
+        if (!rules.length) return { text: '看上级心情', cls: 'pill-idle' };
+        if (rules.some(function (x) { return x.ok === false; })) return { text: '通过把握 低', cls: 'pill-late' };
+        return { text: '通过把握 高', cls: 'pill-work' };
+    }
+
+    function oaDraft(kind, desk, days, reason) {
+        if (kind.id === 'leave') return '领导您好，' + reason + '，我想请 ' + days + ' 天假，您看可以吗？';
+        if (kind.id === 'sick') return '领导，我' + reason + '，想请 ' + days + ' 天病假。';
+        if (kind.id === 'remote') return '领导，最近' + reason + '，我想申请远程办公，您看行吗？';
+        if (kind.id === 'promote') return '领导，我来公司' + (desk.attendance ? '上了 ' + desk.attendance + ' 天班' : '有一阵了') + '，' + reason + '，想跟您聊聊晋升的事。';
+        return '领导，我考虑了很久，' + reason + '，想跟您提离职。';
+    }
+
+    function oaDaysMax(kind, desk) {
+        if (kind.id === 'sick') return OA_SICK_DAYS_MAX;
+        return Math.max(1, desk.leaveLeft || 0);
+    }
+
+    function oaField(label, value) {
+        var row = node('div', 'oa-field');
+        row.appendChild(node('div', 'oa-field-label', label));
+        var v = node('div', 'oa-field-value');
+        if (typeof value === 'string') v.appendChild(document.createTextNode(value));
+        else v.appendChild(value);
+        row.appendChild(v);
+        return row;
+    }
+
+    function oaStepper(max) {
+        var stepper = node('div', 'oa-stepper');
+        var minus = node('div', 'oa-step-btn' + (oaApplyDays > 1 ? '' : ' off'), '−');
+        var plus = node('div', 'oa-step-btn' + (oaApplyDays < max ? '' : ' off'), '+');
+        onTap(minus, function (e) {
+            e.stopPropagation();
+            if (oaApplyDays <= 1) return;
+            oaApplyDays -= 1;
+            refresh();
+        });
+        onTap(plus, function (e) {
+            e.stopPropagation();
+            if (oaApplyDays >= max) return;
+            oaApplyDays += 1;
+            refresh();
+        });
+        stepper.appendChild(minus);
+        stepper.appendChild(node('div', 'oa-step-val', oaApplyDays + ' 天'));
+        stepper.appendChild(plus);
+        return stepper;
+    }
+
+    // The approval route: the applicant, the direct boss, then the file.
+    function oaFlow(data, desk) {
+        var c = card('审批流程');
+        var steps = [
+            { who: fullName(data.member), what: '发起申请', state: '现在', on: true },
+            { who: desk.boss ? fullName(desk.boss.person) : '无上级', what: '直属上级审批' + (desk.boss ? ' · ' + desk.boss.rankName : ''), state: '在聊天里答复' },
+            { who: desk.company, what: '人事归档', state: '自动' }
+        ];
+        steps.forEach(function (s, i) {
+            var step = node('div', 'oa-flow-step' + (i === steps.length - 1 ? ' last' : ''));
+            var rail = node('div', 'oa-flow-rail');
+            rail.appendChild(node('div', 'oa-flow-dot' + (s.on ? ' on' : '')));
+            if (i < steps.length - 1) rail.appendChild(node('div', 'oa-flow-line'));
+            step.appendChild(rail);
+            var body = node('div', 'ph-who');
+            body.appendChild(node('div', 'oa-flow-what', s.what));
+            body.appendChild(node('div', 'ph-sub', s.who + ' · ' + s.state));
+            step.appendChild(body);
+            c.appendChild(step);
+        });
+        return c;
+    }
+
+    function oaSubmit(data, desk, kind, draft) {
+        var env = data.env || {};
+        oaRequests.push({
+            id: 'r' + Date.now().toString(36),
+            member: desk.memberId,
+            kind: kind.id,
+            days: kind.days ? oaApplyDays : 0,
+            reason: kind.reasons[oaApplyReason],
+            text: draft,
+            boss: desk.boss.id,
+            bossName: fullName(desk.boss.person),
+            day: env.day || 0,
+            time: clockText(env),
+            at: Date.now(),
+            status: 'pending'
+        });
+        var go = function () { oaOpenChat(data, desk, draft); };
+        oaSaveRequests().then(go, go);
+    }
+
+    function renderOaApply(data) {
+        var kind = oaKind(oaApplyKind);
+        var wrap = node('div', 'oa-screen');
+        wrap.appendChild(subHeader('oaApply', kind.form));
+        var desk = data.desk;
+        if (!desk || desk.error || desk.none || desk.school) return oaNotice(wrap, '这个人现在没有可以申请的工作。');
+
+        var form = node('div', 'ph-card oa-form');
+        form.appendChild(oaField('申请人', fullName(data.member)));
+        form.appendChild(oaField('所属部门', desk.company + ' · ' + desk.job));
+        form.appendChild(oaField('当前职级', desk.rankName + '（第 ' + desk.rank + ' 级）'));
+        var kinds = oaChipRows(OA_KINDS.map(function (k) {
+            var chip = node('div', 'oa-chip' + (k.id === kind.id ? ' on' : ''), k.label);
+            onTap(chip, function (e) {
+                e.stopPropagation();
+                if (k.id === oaApplyKind) return;
+                oaApplyKind = k.id;
+                oaApplyDays = 1;
+                oaApplyReason = 0;
+                refresh();
+            });
+            return chip;
+        }), 3);
+        form.appendChild(oaField('申请类型', kinds));
+        var max = oaDaysMax(kind, desk);
+        if (oaApplyDays > max) oaApplyDays = max;
+        if (kind.days) form.appendChild(oaField('时长', oaStepper(max)));
+        if (oaApplyReason >= kind.reasons.length) oaApplyReason = 0;
+        form.appendChild(oaField('事由', oaChipRows(kind.reasons.map(function (text, i) {
+            var chip = node('div', 'oa-chip' + (i === oaApplyReason ? ' on' : ''), text);
+            onTap(chip, function (e) {
+                e.stopPropagation();
+                if (i === oaApplyReason) return;
+                oaApplyReason = i;
+                refresh();
+            });
+            return chip;
+        }), 2)));
+        wrap.appendChild(form);
+
+        var checks = oaChecks(kind, desk, oaApplyDays);
+        var odds = oaOdds(checks);
+        var rules = card();
+        var head = node('div', 'ph-row');
+        var title = node('div', 'ph-who');
+        title.appendChild(node('div', 'ph-card-label', '系统校验'));
+        head.appendChild(title);
+        head.appendChild(node('span', 'ph-pill ' + odds.cls, odds.text));
+        rules.appendChild(head);
+        checks.forEach(function (x) {
+            var line = node('div', 'oa-check ' + (x.ok === true ? 'ok' : x.ok === false ? 'no' : 'info'));
+            line.appendChild(node('span', 'oa-check-mark', x.ok === true ? '✓' : x.ok === false ? '✕' : '·'));
+            line.appendChild(node('span', null, x.text));
+            rules.appendChild(line);
+        });
+        wrap.appendChild(rules);
+
+        wrap.appendChild(oaFlow(data, desk));
+
+        var draft = oaDraft(kind, desk, oaApplyDays, kind.reasons[oaApplyReason]);
+        var say = card('附言（发给上级）');
+        say.appendChild(node('div', 'oa-draft', draft));
+        say.appendChild(node('div', 'ph-caption', '提交后这段话会放进和上级的聊天框，改好了再发。上级在聊天里答复，批了以后游戏里自动办理：请假会打电话给公司请好，晋升直接升级，离职会离开公司。'));
+        wrap.appendChild(say);
+
+        var block = oaBossBlock(desk);
+        var btns = node('div', 'ph-btns');
+        btns.appendChild(actionButton('提交审批', 'last ' + (block ? 'off' : 'on'), function () {
+            if (block) return;
+            oaSubmit(data, desk, kind, draft);
+        }));
+        wrap.appendChild(btns);
+        if (block) wrap.appendChild(node('div', 'ph-caption', block));
+        return wrap;
+    }
+
+    // ---------- organisation and pay ----------
+
+    function renderOaOrg(data) {
+        var wrap = node('div', 'oa-screen');
+        wrap.appendChild(subHeader('oaOrg'));
+        var desk = data.desk;
+        if (!desk || desk.error || desk.none || desk.school) return oaNotice(wrap, '这个人现在没有工作。');
+        var people = desk.team.map(function (t) { return t; });
+        people.push({ id: desk.memberId, rank: desk.rank, rankName: desk.rankName, person: data.member, me: true,
+            attendance: desk.attendance || 0, business: 0 });
+        var ranks = desk.ladder.slice().reverse();
+        wrap.appendChild(node('div', 'ph-caption', desk.company + ' · ' + people.length + ' 人' + (desk.readable ? '' : '（名单读不全）')));
+        ranks.forEach(function (r) {
+            var here = people.filter(function (p) { return p.rank === r.rank; });
+            if (!here.length) return;
+            var c = card(r.name + ' · 第 ' + r.rank + ' 级');
+            here.forEach(function (p) {
+                var row = node('div', 'ph-row oa-person');
+                row.appendChild(faceAvatar(p.person));
+                var who = node('div', 'ph-who');
+                who.appendChild(node('div', 'ph-name', fullName(p.person)));
+                var seen = p.me ? null : oaImpression(desk.memberId, p.id);
+                who.appendChild(node('div', 'ph-sub', p.me ? '出勤 ' + p.attendance + ' 天'
+                    : '出勤 ' + p.attendance + ' 天 · ' + (seen ? '对你' + seen.label : '工作关系 ' + Math.round(p.business))));
+                row.appendChild(who);
+                if (p.me) row.appendChild(node('span', 'ph-pill pill-work', '我'));
+                else if (p.boss) row.appendChild(node('span', 'ph-pill oa-tag', '直属上级'));
+                c.appendChild(row);
+            });
             wrap.appendChild(c);
         });
+        return wrap;
+    }
+
+    function oaPayLine(label, value, strong) {
+        var row = node('div', 'oa-pay-line' + (strong ? ' strong' : ''));
+        row.appendChild(node('span', null, label));
+        row.appendChild(node('span', 'oa-pay-val', value));
+        return row;
+    }
+
+    function renderOaPay(data) {
+        var wrap = node('div', 'oa-screen');
+        wrap.appendChild(subHeader('oaPay'));
+        var desk = data.desk;
+        if (!desk || desk.error || desk.none || desk.school) return oaNotice(wrap, '这个人现在没有工作。');
+        var slip = card('工资条');
+        slip.appendChild(oaPayLine('日薪', String(desk.salary)));
+        slip.appendChild(oaPayLine('每周上班', desk.workDays + ' 天'));
+        slip.appendChild(oaPayLine('周薪（预计）', String(desk.salary * desk.workDays), true));
+        if (desk.nextRankName) slip.appendChild(node('div', 'ph-caption', '升到「' + desk.nextRankName + '」后日薪 ' + desk.nextSalary + '，每周多 ' + (desk.nextSalary - desk.salary) * desk.workDays + '。'));
+        wrap.appendChild(slip);
+
+        var ladder = card('职级阶梯');
+        var head = node('div', 'oa-rung oa-rung-head');
+        ['职级', '经验', '日薪', '年假'].forEach(function (t) { head.appendChild(node('div', 'oa-rung-cell', t)); });
+        ladder.appendChild(head);
+        desk.ladder.forEach(function (r) {
+            var cls = r.rank === desk.rank ? ' now' : r.rank < desk.rank ? ' done' : '';
+            var row = node('div', 'oa-rung' + cls);
+            row.appendChild(node('div', 'oa-rung-cell oa-rung-name', (r.rank < desk.rank ? '✓ ' : '') + r.name));
+            row.appendChild(node('div', 'oa-rung-cell', String(r.exp)));
+            row.appendChild(node('div', 'oa-rung-cell', String(r.salary)));
+            row.appendChild(node('div', 'oa-rung-cell', r.leave + ' 天'));
+            ladder.appendChild(row);
+        });
+        ladder.appendChild(node('div', 'ph-caption', '经验在上班时慢慢涨；够了以后找上级谈晋升。'));
+        wrap.appendChild(ladder);
         return wrap;
     }
 
@@ -3982,6 +5043,13 @@
         return { id: raw.id, width: w, height: h };
     }
 
+    // A family member's reply read aloud (sms-bridge lib/voicenotes.js): media/<id>.webm.
+    function smsVoiceClean(raw) {
+        if (!raw || typeof raw.id !== 'string' || !/^[a-f0-9]{16}$/.test(raw.id)) return null;
+        var seconds = Number(raw.seconds);
+        return isFinite(seconds) && seconds > 0 && seconds < 600 ? { id: raw.id, seconds: seconds } : null;
+    }
+
     function cleanList(raw) {
         var data = parseJson(raw);
         if (!Array.isArray(data)) return [];
@@ -3993,7 +5061,10 @@
             if (!m.text && !image) continue;
             var msg = { id: String(m.id || ('m-' + m.at + '-' + i)), text: m.text || SMS_PHOTO_TEXT, at: m.at, game: smsGameClean(m.game) };
             if (image) msg.image = image;
+            var voice = smsVoiceClean(m.voice);
+            if (voice) msg.voice = voice;
             if (m.kind === 'notice') msg.notice = true;
+            if (m.work === 'up' || m.work === 'down') msg.work = m.work;
             if (m.hint === true) msg.hint = true;
             out.push(msg);
         }
@@ -4197,9 +5268,430 @@
         return saveJson(SMS_OUTSIDE_KEY, { v: 1, byPlayer: smsOutside }, SOUND_SECTION).then(null, function () {});
     }
 
+    // A schoolmate's friend request to the played high-schooler, from ui/phone/suitor/board.cfg
+    // (written by the reply service, lib/suitor.js): { v, byPlayer: { id: { id, state, note,
+    // contact } } }. The answer goes to saved/suitor-answers.cfg, { v, byId: { request id:
+    // { answer: accept | decline, at } } }, where the service picks it up; accepted, the suitor
+    // joins Texts like anyone messaged from Contacts.
+    var SUITOR_SECTION = 'ui/phone/suitor';
+    var SUITOR_ANSWERS_KEY = 'suitor-answers';
+    var SUITOR_ANSWERS_MAX = 20;
+    var suitorBoard = {};
+    var suitorAnswers = {};
+
+    function loadSuitor() {
+        return cachedRead('suitor', 4000, function () {
+            return Promise.all([cfgValue(SUITOR_SECTION, 'board'), cfgValue(SOUND_SECTION, SUITOR_ANSWERS_KEY)]).then(function (r) {
+                var b = r[0];
+                suitorBoard = b && b.v === 1 && b.byPlayer && typeof b.byPlayer === 'object' ? b.byPlayer : {};
+                var a = r[1] && r[1].v === 1 && r[1].byId && typeof r[1].byId === 'object' ? r[1].byId : {};
+                Object.keys(a).forEach(function (k) { if (!suitorAnswers[k]) suitorAnswers[k] = a[k]; });
+            }, function () {});
+        });
+    }
+
+    // The request waiting for this character, or null.
+    function suitorRequest(meId) {
+        var rec = suitorBoard[String(meId)];
+        if (!rec || rec.state !== 'request' || !rec.id || !rec.contact || !rec.contact.entity_id) return null;
+        return suitorAnswers[rec.id] ? null : rec;
+    }
+
+    // The household as the last Texts or chat read had it, for the lover mark on a chat's header.
+    var smsMembersSeen = [];
+
+    // Who the played character loves, marked in Texts and on the chat: their spouse, or the
+    // schoolmate they are going out with (suitor board state dating). '' for anyone else.
+    function loverTag(meId, m, members) {
+        if (!m) return '';
+        var self = memberById(members || [], meId);
+        if (self && isSpouseOf(self, m)) return '爱人';
+        var rec = suitorBoard[String(meId)];
+        if (rec && rec.state === 'dating' && rec.contact && String(rec.contact.entity_id) === String(m.entity_id)) return '恋人';
+        return '';
+    }
+
+    function answerSuitor(meId, rec, answer) {
+        suitorAnswers[rec.id] = { answer: answer, at: Date.now() };
+        var ids = Object.keys(suitorAnswers).sort(function (a, b) { return (suitorAnswers[b].at || 0) - (suitorAnswers[a].at || 0); });
+        var keep = {};
+        ids.slice(0, SUITOR_ANSWERS_MAX).forEach(function (k) { keep[k] = suitorAnswers[k]; });
+        suitorAnswers = keep;
+        var saved = saveJson(SUITOR_ANSWERS_KEY, { v: 1, byId: keep }, SOUND_SECTION).then(null, function () {});
+        if (answer !== 'accept') return saved;
+        return saved.then(function () { return addOutside(meId, rec.contact, ''); });
+    }
+
+    // Texts folders: the player's own grouping of their chats, per played character, kept by this
+    // phone alone in saved/texts-folders.cfg: { v, byPlayer: { id: { folders: [{ id, name }],
+    // assign: { 'c:<contact id>' | 'g:<group id>': folder id } } } }. The Texts list shows one folder
+    // at a time, picked from the chips above it; Manage (textsFolders) makes, names and fills them.
+    // Each character's folders live in persona/<id>/folders.cfg: { v, folders, assign }. The
+    // service files that folder with the household it belongs to (lib/households.js), so another
+    // save, whose people may have the same ids, never sees them. Folders written before that, in the
+    // shared saved/texts-folders.cfg ({ v, byPlayer: { id: ... } }), are taken over once.
+    var TX_FOLDERS_KEY = 'folders';
+    var TX_LEGACY_KEY = 'texts-folders';
+    var TX_FOLDERS_MAX = 8;
+    var TX_NAME_MAX = 8;
+    var TX_ALL = '';
+    var TX_NONE = '_none';
+    // Player id -> { folders, assign } as last read or changed here.
+    var txFoldersAll = {};
+    // Player id -> read from its file at least once since the phone started.
+    var txFoldersRead = {};
+    // Player id -> when they were last changed here: a read within a few seconds of a change does
+    // not put back what the file held before the change was saved.
+    var txFoldersChangedAt = {};
+    var TX_FRESH_MS = 6000;
+    // Player id -> the folder the list shows.
+    var txFolderOn = {};
+    var txNewName = '';
+
+    function txSection(meId) { return 'ui/phone/persona/' + String(meId); }
+
+    function txClean(v) {
+        if (!v || typeof v !== 'object') return null;
+        return { folders: Array.isArray(v.folders) ? v.folders : [], assign: v.assign && typeof v.assign === 'object' ? v.assign : {} };
+    }
+
+    // { folders, assign } of this player; {} when never saved (the file is not there); null when
+    // the read failed (the game busy loading a save, the answer late), which is not an empty file.
+    function readTxFolders(meId) {
+        var missing = function (e) { return /not found/i.test(errText(e)); };
+        return call('uimod.cfg_load', { mod_id: SMS_MOD, section: txSection(meId), key: TX_FOLDERS_KEY }, 'value').then(function (r) {
+            var raw = r && r.value;
+            if (raw === undefined || raw === null || raw === '') return readTxLegacy(meId);
+            var v = parseJson(raw);
+            return v && v.v === 1 ? txClean(v) : null;
+        }, function (e) {
+            return missing(e) ? readTxLegacy(meId) : null;
+        });
+    }
+
+    // The shared file of before: this player's entry, or {} when there is none.
+    function readTxLegacy(meId) {
+        return call('uimod.cfg_load', { mod_id: SMS_MOD, section: SOUND_SECTION, key: TX_LEGACY_KEY }, 'value').then(function (r) {
+            var v = parseJson(r && r.value);
+            var mine = v && v.v === 1 && v.byPlayer && typeof v.byPlayer === 'object' ? v.byPlayer[String(meId)] : null;
+            var got = txClean(mine);
+            if (!got) return {};
+            // Taken over: written to its own place, and out of the shared file, so another save
+            // with someone under the same id cannot find it there later.
+            got.migrated = v.byPlayer;
+            return got;
+        }, function (e) {
+            return /not found/i.test(errText(e)) ? {} : null;
+        });
+    }
+
+    // Read again whenever the Texts list loads (a few seconds apart at most), so a household switch
+    // that moved the files is picked up; what was just changed here is not undone by it.
+    function loadTxFolders(meId) {
+        var key = String(meId);
+        return cachedRead('tx-folders:' + key, 5000, function () { return readTxFolders(key); }).then(function (v) {
+            if (!v) return;
+            if (Date.now() - (txFoldersChangedAt[key] || 0) < TX_FRESH_MS) return;
+            var legacy = v.migrated;
+            delete v.migrated;
+            txFoldersAll[key] = v.folders ? v : { folders: [], assign: {} };
+            txFoldersRead[key] = true;
+            if (legacy) {
+                saveJson(TX_FOLDERS_KEY, { v: 1, folders: v.folders, assign: v.assign }, txSection(key)).then(function () {
+                    var rest = {};
+                    Object.keys(legacy).forEach(function (k) { if (k !== key) rest[k] = legacy[k]; });
+                    return saveJson(TX_LEGACY_KEY, { v: 1, byPlayer: rest }, SOUND_SECTION);
+                }).then(null, function () {});
+                forgetRead('tx-folders:' + key);
+            }
+        }, function () {});
+    }
+
+    function txFoldersOf(meId) {
+        var key = String(meId);
+        var f = txFoldersAll[key];
+        if (!f || typeof f !== 'object') f = txFoldersAll[key] = { folders: [], assign: {} };
+        if (!Array.isArray(f.folders)) f.folders = [];
+        f.folders = f.folders.filter(function (x) { return x && typeof x.id === 'string' && typeof x.name === 'string'; });
+        if (!f.assign || typeof f.assign !== 'object') f.assign = {};
+        return f;
+    }
+
+    // meId: the player whose folders changed. Never read yet: read first, so a failed read cannot
+    // turn into an empty file written over the real one.
+    function saveTxFolders(meId) {
+        var key = String(meId);
+        txFoldersChangedAt[key] = Date.now();
+        var write = function () {
+            var f = txFoldersOf(key);
+            txFoldersChangedAt[key] = Date.now();
+            forgetRead('tx-folders:' + key);
+            return saveJson(TX_FOLDERS_KEY, { v: 1, folders: f.folders, assign: f.assign }, txSection(key)).then(null, function () {});
+        };
+        if (txFoldersRead[key]) return write();
+        return readTxFolders(key).then(function (v) {
+            if (!v) {
+                setNote('分组暂时存不进去，稍后再改一次。', true);
+                return;
+            }
+            txFoldersRead[key] = true;
+            return write();
+        });
+    }
+
+    // The folder a chat is in, or '' when it is in none (or its folder was deleted).
+    function txFolderOfKey(f, key) {
+        var id = f.assign[key];
+        return id && f.folders.some(function (x) { return x.id === id; }) ? id : '';
+    }
+
+    function txInFolder(f, key, folder) {
+        if (folder === TX_ALL) return true;
+        var at = txFolderOfKey(f, key);
+        return folder === TX_NONE ? !at : at === folder;
+    }
+
+    function txCurrent(meId, f) {
+        var on = txFolderOn[String(meId)] || TX_ALL;
+        if (on !== TX_ALL && on !== TX_NONE && !f.folders.some(function (x) { return x.id === on; })) on = TX_ALL;
+        return on;
+    }
+
+    function txCleanName(v) {
+        return String(v || '').replace(/[\r\n]/g, '').replace(/^\s+|\s+$/g, '').slice(0, TX_NAME_MAX);
+    }
+
+    // Every chat on the Texts list as { key, unread }.
+    function txChats(data) {
+        var out = [];
+        (data.groups || []).forEach(function (row) { if (row && row.meta) out.push({ key: 'g:' + row.meta.id, unread: row.unread || 0 }); });
+        (data.contacts || []).forEach(function (row) { out.push({ key: 'c:' + row.member.entity_id, unread: row.unread || 0 }); });
+        return out;
+    }
+
+    // Switching folders, or changing them on the Manage page, only changes what is drawn: the page
+    // is drawn again from what it last read instead of reading every conversation from the game
+    // again, which takes seconds in the game.
+    function txRedraw() {
+        var rec = lastData[current];
+        if ((current !== 'texts' && current !== 'textsFolders') || !rec || !rec.data || String(rec.played) !== String(playedId)) {
+            refresh();
+            return;
+        }
+        var scroll = wf.content.scrollTop;
+        show(screens[current].render(rec.data));
+        if (current === 'textsFolders') wf.content.scrollTop = scroll;
+    }
+
+    function txChips(data, f, on) {
+        var row = node('div', 'tx-chips');
+        var chats = txChats(data);
+        var chip = function (id, label) {
+            var unread = 0;
+            chats.forEach(function (c) { if (txInFolder(f, c.key, id)) unread += c.unread; });
+            var c = node('div', 'tx-chip' + (on === id ? ' on' : ''));
+            c.appendChild(node('span', 'tx-chip-name', label));
+            if (unread > 0 && on !== id && id !== TX_ALL) c.appendChild(node('span', 'tx-chip-dot', unread > 9 ? '9+' : String(unread)));
+            onTap(c, function (e) {
+                e.stopPropagation();
+                txFolderOn[String(data.meId)] = id;
+                txRedraw();
+            });
+            row.appendChild(c);
+        };
+        chip(TX_ALL, '全部');
+        f.folders.forEach(function (x) { chip(x.id, x.name); });
+        if (f.folders.length && chats.some(function (c) { return !txFolderOfKey(f, c.key); })) chip(TX_NONE, '未分组');
+        var edit = node('div', 'tx-chip tx-chip-edit', f.folders.length ? '管理' : '+ 分组');
+        onTap(edit, function (e) {
+            e.stopPropagation();
+            // The Manage page reads what the list reads: it opens on the list's data at once, and
+            // is brought up to date behind it.
+            if (!lastData.textsFolders || String(lastData.textsFolders.played) !== String(playedId)) {
+                lastData.textsFolders = { data: data, at: Date.now(), played: playedId };
+            }
+            open('textsFolders');
+        });
+        row.appendChild(edit);
+        return row;
+    }
+
+    // One tap: family, classmates, work and friends, from what the list already knows. Chats the
+    // player already put somewhere stay where they are.
+    function txAutoFolders(data, f) {
+        var me = memberById(data.members || [], data.meId) || {};
+        var teen = /Teen$/.test(String(me.age_group || ''));
+        var ensure = function (name) {
+            for (var i = 0; i < f.folders.length; i++) if (f.folders[i].name === name) return f.folders[i].id;
+            if (f.folders.length >= TX_FOLDERS_MAX) return '';
+            var id = 'f' + Date.now().toString(36) + f.folders.length;
+            f.folders.push({ id: id, name: name });
+            return id;
+        };
+        var put = function (key, name) {
+            if (txFolderOfKey(f, key)) return;
+            var id = ensure(name);
+            if (id) f.assign[key] = id;
+        };
+        var household = function (id) { return !!memberById(data.members || [], id); };
+        (data.groups || []).forEach(function (row) {
+            var m = row && row.meta;
+            if (!m) return;
+            put('g:' + m.id, m.school ? '同学' : m.company ? '工作' : m.members.every(household) ? '家人' : '朋友');
+        });
+        var notKin = { '': 1, '…': 1, Romance: 1, 'Close Friend': 1, Friend: 1, Colleague: 1, Acquaintance: 1, '上级': 1 };
+        (data.contacts || []).forEach(function (row) {
+            var m = row.member;
+            var label = String(m.relationship_label || '');
+            var name;
+            if (!m.outside) name = '家人';
+            else if (label === 'Colleague' || label === '上级') name = '工作';
+            else if (teen && /Teen$/.test(String(m.age_group || ''))) name = '同学';
+            else if (!notKin[label]) name = '家人';
+            else name = '朋友';
+            put('c:' + m.entity_id, name);
+        });
+    }
+
+    function txNameField(value, placeholder, onInput) {
+        var field = node('textarea', 'sms-gname tx-fname');
+        field.setAttribute('maxlength', String(TX_NAME_MAX));
+        field.setAttribute('rows', '1');
+        if (placeholder) field.setAttribute('placeholder', placeholder);
+        field.value = value;
+        applyUiFont(field);
+        field.addEventListener('input', function () { onInput(field.value); });
+        return field;
+    }
+
+    function renderTxFolders(data) {
+        var wrap = node('div', 'ph-page');
+        wrap.appendChild(subHeader('textsFolders', '聊天分组'));
+        var f = txFoldersOf(data.meId);
+        var fc = card('分组');
+        if (!f.folders.length) fc.appendChild(node('div', 'ph-caption', '还没有分组。可以自己建，也可以一键按家人、同学、工作、朋友分好。'));
+        f.folders.forEach(function (x) {
+            var r = node('div', 'tx-frow');
+            var name = txNameField(x.name, '', function (v) { v = txCleanName(v); if (v) x.name = v; });
+            name.addEventListener('blur', function () { saveTxFolders(data.meId); });
+            r.appendChild(name);
+            var del = node('div', 'tx-fbtn warn', '删除');
+            onTap(del, function (e) {
+                e.stopPropagation();
+                f.folders = f.folders.filter(function (y) { return y.id !== x.id; });
+                Object.keys(f.assign).forEach(function (k) { if (f.assign[k] === x.id) delete f.assign[k]; });
+                if (txFolderOn[String(data.meId)] === x.id) txFolderOn[String(data.meId)] = TX_ALL;
+                saveTxFolders(data.meId);
+                txRedraw();
+            });
+            r.appendChild(del);
+            fc.appendChild(r);
+        });
+        if (f.folders.length < TX_FOLDERS_MAX) {
+            var addRow = node('div', 'tx-frow');
+            addRow.appendChild(txNameField(txNewName, '新分组名称', function (v) { txNewName = v; }));
+            var add = node('div', 'tx-fbtn on', '添加');
+            onTap(add, function (e) {
+                e.stopPropagation();
+                var v = txCleanName(txNewName);
+                if (!v) { setNote('先写分组名称。', true); return; }
+                if (f.folders.some(function (y) { return y.name === v; })) { setNote('已经有叫「' + v + '」的分组了。', true); return; }
+                f.folders.push({ id: 'f' + Date.now().toString(36), name: v });
+                txNewName = '';
+                setNote('', false);
+                saveTxFolders(data.meId);
+                txRedraw();
+            });
+            addRow.appendChild(add);
+            fc.appendChild(addRow);
+        }
+        if (!f.folders.length) {
+            var btns = node('div', 'ph-btns');
+            btns.appendChild(actionButton('一键分组', 'on last', function () {
+                txAutoFolders(data, f);
+                saveTxFolders(data.meId);
+                txRedraw();
+            }));
+            fc.appendChild(btns);
+        }
+        wrap.appendChild(fc);
+        if (!f.folders.length) return wrap;
+
+        var ac = card('把聊天放进分组');
+        var rows = [];
+        (data.groups || []).forEach(function (row) {
+            if (row && row.meta) rows.push({ key: 'g:' + row.meta.id, name: row.meta.name, face: function () { return grpFaces(row.meta, data.members || []); } });
+        });
+        (data.contacts || []).forEach(function (row) {
+            var m = row.member;
+            rows.push({ key: 'c:' + m.entity_id, name: fullName(m), face: function () { var p = node('div', 'sms-pic'); p.appendChild(faceAvatar(m)); return p; } });
+        });
+        if (!rows.length) ac.appendChild(node('div', 'ph-empty', '还没有聊天。'));
+        rows.forEach(function (item) {
+            var r = node('div', 'tx-arow');
+            var top = node('div', 'ph-row');
+            top.appendChild(item.face());
+            top.appendChild(node('div', 'ph-name tx-aname', item.name));
+            r.appendChild(top);
+            var chips = node('div', 'tx-achips');
+            var paint = function () {
+                var at = txFolderOfKey(f, item.key);
+                for (var i = 0; i < chips.childNodes.length; i++) {
+                    var c = chips.childNodes[i];
+                    c.className = 'tx-chip small' + (c.getAttribute('data-f') === at ? ' on' : '');
+                }
+            };
+            var opt = function (id, label) {
+                var c = node('div', 'tx-chip small', label);
+                c.setAttribute('data-f', id);
+                onTap(c, function (e) {
+                    e.stopPropagation();
+                    if (id) f.assign[item.key] = id;
+                    else delete f.assign[item.key];
+                    paint();
+                    saveTxFolders(data.meId);
+                });
+                chips.appendChild(c);
+            };
+            f.folders.forEach(function (x) { opt(x.id, x.name); });
+            opt('', '不分组');
+            paint();
+            r.appendChild(chips);
+            ac.appendChild(r);
+        });
+        wrap.appendChild(ac);
+        return wrap;
+    }
+
+    function suitorCard(rec, meId) {
+        var c = node('div', 'ph-card sms-suitor');
+        var line = node('div', 'ph-row');
+        var pic = node('div', 'sms-pic');
+        pic.appendChild(faceAvatar(rec.contact));
+        line.appendChild(pic);
+        var who = node('div', 'ph-who');
+        who.appendChild(node('div', 'ph-name', fullName(rec.contact)));
+        who.appendChild(node('div', 'ph-sub', '想加你为好友'));
+        line.appendChild(who);
+        c.appendChild(line);
+        if (rec.note) c.appendChild(node('div', 'sms-suitor-note', '“' + rec.note + '”'));
+        var btns = node('div', 'ph-btns');
+        btns.appendChild(actionButton('拒绝', '', function () {
+            answerSuitor(meId, rec, 'decline').then(function () { refresh(); });
+        }));
+        btns.appendChild(actionButton('接受', 'on last', function () {
+            answerSuitor(meId, rec, 'accept').then(function () {
+                smsContactId = String(rec.contact.entity_id);
+                open('chat');
+            });
+        }));
+        c.appendChild(btns);
+        return c;
+    }
+
     function prefixIds(list, prefix) {
         var out = [];
-        for (var i = 0; i < list.length; i++) out.push({ id: prefix + list[i].id, text: list[i].text, image: list[i].image || null, at: list[i].at, game: list[i].game });
+        for (var i = 0; i < list.length; i++) out.push({ id: prefix + list[i].id, text: list[i].text, image: list[i].image || null, voice: list[i].voice || null, at: list[i].at, game: list[i].game });
         return out;
     }
 
@@ -4231,8 +5723,63 @@
         });
     }
 
+    // The Texts list in one file (ui/phone/sms/index.cfg, written by the reply service,
+    // lib/smsindex.js): each chat's newest message, unread count and status, and each group's
+    // summary. One read instead of six per chat and four per group, which the game's pace for UI
+    // mods turned into seconds. Used only while fresh and written for the played character;
+    // otherwise every file is read as before.
+    var SMS_INDEX_FRESH_MS = 10000;
+    // Section -> newest message of theirs this phone has marked seen: the index catches up a
+    // second later, and a chat just read must not show its old unread badge meanwhile.
+    var smsSeenLocal = {};
+
+    function loadSmsIndex(meId) {
+        return cachedRead('sms-index', 700, function () {
+            return call('uimod.cfg_load', { mod_id: SMS_MOD, section: SMS_SECTION, key: 'index' }, 'value')
+                .then(function (r) { return parseJson(r.value); }, function () { return null; });
+        }).then(function (v) {
+            if (!v || v.v !== 1 || String(v.player) !== String(meId) || typeof v.at !== 'number') return null;
+            if (Math.abs(Date.now() - v.at) > SMS_INDEX_FRESH_MS) return null;
+            if (!v.threads || typeof v.threads !== 'object' || !v.groups || typeof v.groups !== 'object') return null;
+            return v;
+        }, function () { return null; });
+    }
+
+    function smsIndexLast(raw) {
+        if (!raw || typeof raw.at !== 'number' || typeof raw.text !== 'string') return null;
+        var side = raw.side === 'mine' || raw.side === 'notice' ? raw.side : 'theirs';
+        return { side: side, id: String(raw.id || ''), text: raw.text, image: smsImageClean(raw.image), voice: smsVoiceClean(raw.voice), at: raw.at, game: smsGameClean(raw.game) };
+    }
+
+    // One Texts row from the index: { last, unread, status }, as loadConversation would give it.
+    function smsIndexRow(idx, meId, contactId) {
+        var row = idx.threads[String(contactId)] || null;
+        var section = smsSection(meId, contactId);
+        var last = row ? smsIndexLast(row.last) : null;
+        var unread = row && typeof row.unread === 'number' ? row.unread : 0;
+        var theirsAt = row && typeof row.theirsAt === 'number' ? row.theirsAt : 0;
+        if (unread && smsSeenLocal[section] && smsSeenLocal[section] >= theirsAt) unread = 0;
+        // A chat open a moment ago knows its newest message sooner than the index does.
+        var rec = chatLast[section];
+        var fresh = rec && rec.data && rec.data.messages && rec.data.messages.length ? rec.data.messages[rec.data.messages.length - 1] : null;
+        if (fresh && (!last || fresh.at > last.at)) last = fresh;
+        return { last: last, unread: unread, status: row && row.status && typeof row.status === 'object' ? row.status : null };
+    }
+
     function totalUnread(meId, members) {
         var contacts = textContacts(meId, members);
+        return loadSmsIndex(meId).then(function (idx) {
+            if (!idx) return null;
+            var n = 0;
+            contacts.forEach(function (m) { n += smsIndexRow(idx, meId, m.entity_id).unread; });
+            return n;
+        }).then(function (fromIndex) {
+            if (fromIndex !== null) return fromIndex;
+            return totalUnreadRead(meId, contacts);
+        });
+    }
+
+    function totalUnreadRead(meId, contacts) {
         return Promise.all(contacts.map(function (m) {
             var section = smsSection(meId, m.entity_id);
             var reverse = smsSection(m.entity_id, meId);
@@ -4320,9 +5867,9 @@
     function mergeThread(outbox, inbox) {
         var list = [];
         var i;
-        for (i = 0; i < outbox.length; i++) list.push({ side: 'mine', id: outbox[i].id, text: outbox[i].text, image: outbox[i].image || null, at: outbox[i].at, game: outbox[i].game });
+        for (i = 0; i < outbox.length; i++) list.push({ side: 'mine', id: outbox[i].id, text: outbox[i].text, image: outbox[i].image || null, voice: outbox[i].voice || null, at: outbox[i].at, game: outbox[i].game });
         for (i = 0; i < inbox.length; i++) {
-            list.push({ side: inbox[i].notice ? 'notice' : 'theirs', id: inbox[i].id, text: inbox[i].text, image: inbox[i].image || null, at: inbox[i].at, game: inbox[i].game, hint: !!inbox[i].hint });
+            list.push({ side: inbox[i].notice ? 'notice' : 'theirs', id: inbox[i].id, text: inbox[i].text, image: inbox[i].image || null, voice: inbox[i].voice || null, at: inbox[i].at, game: inbox[i].game, hint: !!inbox[i].hint, work: inbox[i].work || '' });
         }
         list.sort(function (a, b) {
             if (a.at !== b.at) return a.at - b.at;
@@ -4439,6 +5986,21 @@
         return line;
     }
 
+    // How a colleague's impression of the player just moved (the reply service's workplace.js):
+    // a centred line, up in green or down in red, which opens OA.
+    function smsWorkNotice(text, dir, arriving, delay) {
+        var line = node('div', 'sms-notice sms-work ' + (dir === 'up' ? 'up' : 'down') + (arriving ? ' sms-in' : ''));
+        line.appendChild(node('span', 'sms-work-arrow', dir === 'up' ? '\u25B2' : '\u25BC'));
+        line.appendChild(node('span', 'sms-notice-text', text));
+        line.appendChild(node('span', 'sms-notice-go', 'OA \u203A'));
+        if (arriving) setSmsDelay(line, delay);
+        onTap(line, function (e) {
+            e.stopPropagation();
+            open('oa');
+        });
+        return line;
+    }
+
     // Under a message that let the contact's story show.
     function smsHintTag(arriving, delay) {
         var tag = node('div', 'sms-hint' + (arriving ? ' sms-in' : ''), '话里有话 \u203A');
@@ -4460,6 +6022,7 @@
     // A photo keeps its aspect ratio and shares the bubble with an optional caption. The
     // placeholder gives the text-only reply service context, but is not shown as a caption.
     function smsMessageBubble(m) {
+        if (m.voice) return smsVoiceBubble(m.voice);
         if (!m.image) return smsBubble(m.text);
         var caption = m.text === SMS_PHOTO_TEXT ? '' : m.text;
         var bubble = node('div', 'sms-bubble sms-photo-message' + (caption ? ' has-caption' : ''));
@@ -4489,6 +6052,95 @@
             bubble.appendChild(text);
         }
         return bubble;
+    }
+
+    // A voice message: a bubble as wide as the clip is long, tapped to play or stop. The game's
+    // engine plays sound only from a <video> it draws, so the clip plays in the island like the
+    // phone's sounds (soundHostEl). The chat is redrawn often; the playing clip outlives its
+    // bubble and the new bubble is marked from smsVoiceNow.
+    var smsVoiceNow = null;
+
+    function smsVoiceBubble(voice) {
+        var secs = Math.max(1, Math.round(voice.seconds));
+        var bubble = node('div', 'sms-bubble sms-voice' + (smsVoiceNow && smsVoiceNow.id === voice.id ? ' playing' : ''));
+        bubble._voiceId = voice.id;
+        bubble.style.width = Math.min(210, 66 + secs * 7) + 'px';
+        var wave = node('span', 'sms-voice-wave');
+        for (var i = 1; i <= 3; i++) wave.appendChild(node('span', 'sms-voice-bar b' + i));
+        bubble.appendChild(wave);
+        bubble.appendChild(node('span', 'sms-voice-len', secs + '″'));
+        bubble.addEventListener('click', function () { smsVoicePlay(voice); });
+        smsVoiceLoad(voice);
+        return bubble;
+    }
+
+    function smsVoiceMark(id, on) {
+        var list = document.getElementsByClassName('sms-voice');
+        for (var i = 0; i < list.length; i++) {
+            if (list[i]._voiceId !== id) continue;
+            list[i].className = 'sms-bubble sms-voice' + (on ? ' playing' : '');
+        }
+    }
+
+    // Like the phone's sounds, a clip is made and left loading in the island before it is wanted
+    // (when its bubble is drawn) and is rewound and played on a tap: a <video> made on the tap
+    // reports playing but stays silent. The newest few are kept.
+    var SMS_VOICE_KEEP = 6;
+    var smsVoiceMedia = [];
+
+    function smsVoiceLoad(voice) {
+        for (var i = 0; i < smsVoiceMedia.length; i++) {
+            if (smsVoiceMedia[i].id === voice.id) return smsVoiceMedia[i].media;
+        }
+        var m = document.createElement('video');
+        m.setAttribute('preload', 'auto');
+        m.setAttribute('width', '16');
+        m.setAttribute('height', '16');
+        m.src = 'media/' + voice.id + '.webm';
+        ['playing', 'ended', 'error'].forEach(function (name) {
+            m.addEventListener(name, function () {
+                traceLoad('voice ' + voice.id + ' ' + name + ' at ' + (m.currentTime || 0) + (m.error ? ' error ' + m.error.code : ''));
+                if (name !== 'playing' && smsVoiceNow && smsVoiceNow.id === voice.id) smsVoiceStop();
+            });
+        });
+        soundHostEl().appendChild(m);
+        smsVoiceMedia.push({ id: voice.id, media: m });
+        while (smsVoiceMedia.length > SMS_VOICE_KEEP) {
+            var old = smsVoiceMedia.shift();
+            if (smsVoiceNow && smsVoiceNow.id === old.id) smsVoiceStop();
+            soundDrop(old.media);
+        }
+        return m;
+    }
+
+    function smsVoiceStop() {
+        var cur = smsVoiceNow;
+        if (!cur) return;
+        smsVoiceNow = null;
+        clearTimeout(cur.timer);
+        try { cur.media.pause(); } catch (e) {}
+        smsVoiceMark(cur.id, false);
+    }
+
+    function smsVoicePlay(voice) {
+        var again = smsVoiceNow && smsVoiceNow.id === voice.id;
+        smsVoiceStop();
+        if (again) return;
+        var m = smsVoiceLoad(voice);
+        try {
+            m.volume = Math.max(0, Math.min(1, soundSettings.volume / 100 * soundGame));
+            m.currentTime = 0;
+        } catch (e) {}
+        var cur = { id: voice.id, media: m, timer: 0 };
+        smsVoiceNow = cur;
+        smsVoiceMark(voice.id, true);
+        traceLoad('voice ' + voice.id + ' tap, ready ' + m.readyState + ' volume ' + m.volume + ' (sound ' + soundState + ')');
+        // The engine may play without ever firing ended, so the clip's length stops it too.
+        cur.timer = setTimeout(function () { if (smsVoiceNow === cur) smsVoiceStop(); }, (voice.seconds + 1.5) * 1000);
+        soundStart(m);
+        setTimeout(function () {
+            traceLoad('voice ' + voice.id + ' +1000ms ready ' + m.readyState + ' at ' + (m.currentTime || 0) + ' paused ' + m.paused);
+        }, 1000);
     }
 
     function smsInsertEmoji(name) {
@@ -4790,6 +6442,39 @@
         restoreSmsLog(log);
     }
 
+    function smsEarlierRow(hidden) {
+        var row = node('div', 'sms-earlier', '查看更早的消息（' + hidden + '）');
+        row.id = 'sms-earlier';
+        onTap(row, function (e) {
+            e.stopPropagation();
+            smsShowEarlier();
+        });
+        return row;
+    }
+
+    // The next SMS_PAGE older messages above the ones shown, the reading position held: the
+    // message at the top stays where it was and the older ones appear above it.
+    function smsShowEarlier() {
+        var oldLog = document.getElementById('sms-log');
+        var data = smsChatData;
+        if (smsEarlierBusy || !oldLog || !data || current !== 'chat' || smsWindow.section !== data.section) return;
+        smsEarlierBusy = true;
+        var fromBottom = oldLog.scrollHeight - oldLog.scrollTop;
+        smsWindow.count += SMS_PAGE;
+        if (patchChat(data)) {
+            var log = document.getElementById('sms-log');
+            if (log) {
+                smsStick = false;
+                log.scrollTop = Math.max(0, log.scrollHeight - fromBottom);
+                smsJumpSync(log);
+            }
+        } else {
+            smsWindow.count -= SMS_PAGE;
+        }
+        // Once the new rows have been laid out: a scroll event from the swap must not ask again.
+        setTimeout(function () { smsEarlierBusy = false; }, 120);
+    }
+
     function restoreSmsLog(log) {
         if (log && smsStick) {
             var px = measureSmsIn(log);
@@ -4955,13 +6640,22 @@
     // (open, chatCached). Keyed by section, so what is shown can only be the thread whose row was
     // tapped; the fresh copy lands as soon as it arrives and is patched over it.
     var CHAT_TTL_MS = 5 * 60 * 1000;
+    // The row last tapped in Texts: { contact, meId, env }, for opening its thread before it is read.
+    var smsOpenHint = null;
     var chatLast = {};
 
     function chatCached(screenId) {
         if (screenId !== 'chat' || !smsContactId || !playedId) return null;
-        var rec = chatLast[smsSection(playedId, smsContactId)];
-        if (!rec || Date.now() - rec.at > CHAT_TTL_MS) return null;
-        return rec.data;
+        var section = smsSection(playedId, smsContactId);
+        var rec = chatLast[section];
+        if (rec && Date.now() - rec.at <= CHAT_TTL_MS) return rec.data;
+        // Not read yet (the list is still reading, or it was read too long ago): the tapped row
+        // already says who it is, so the conversation slides in at once on its header and box and
+        // says it is loading, instead of the tap sitting unanswered until the read lands.
+        var hint = smsOpenHint;
+        if (!hint || String(hint.contact.entity_id) !== String(smsContactId) || String(hint.meId) !== String(playedId)) return null;
+        return { env: hint.env, meId: hint.meId, contact: hint.contact, section: section, messages: [], status: null,
+            portraitRev: portraitRev, loading: true };
     }
 
     function rememberChat(env, meId, contact, conv) {
@@ -4974,12 +6668,21 @@
 
     function loadTexts() {
         return watchClear().then(function () {
-            return Promise.all([getEnv(), getPossessedId(), getMembers(), loadPortraitIndex(), loadEmojiSet(), loadOutside()]);
+            return Promise.all([getEnv(), getPossessedId(), getMembers(), loadPortraitIndex(), loadEmojiSet(), loadOutside(), loadSuitor()]);
+        }).then(function (r) {
+            return Promise.all([loadSmsIndex(String(r[1])), loadTxFolders(String(r[1]))]).then(function (x) { r.push(x[0]); return r; });
         }).then(function (r) {
             var meId = String(r[1]);
             var members = r[2];
             var contacts = textContacts(meId, members);
+            var suitor = suitorRequest(meId);
+            var idx = r[r.length - 1];
             return Promise.all(contacts.map(function (m) {
+                // The index has every row ready; only without it is each chat read.
+                if (idx) {
+                    var row = smsIndexRow(idx, meId, m.entity_id);
+                    return Promise.resolve({ member: m, last: row.last, unread: row.unread, status: row.status });
+                }
                 return loadConversation(meId, m.entity_id).then(function (conv) {
                     rememberChat(r[0], meId, m, conv);
                     return {
@@ -4990,8 +6693,8 @@
                     };
                 });
             })).then(function (rows) {
-                return loadGroupsForTexts(members, meId).then(function (groups) {
-                    return { env: r[0], meId: meId, members: members, self: memberById(members, meId), contacts: rows, groups: groups };
+                return loadGroupsForTexts(members, meId, idx).then(function (groups) {
+                    return { env: r[0], meId: meId, members: members, self: memberById(members, meId), contacts: rows, groups: groups, suitor: suitor };
                 });
             });
         });
@@ -5016,11 +6719,24 @@
         head.appendChild(smsPlusButton(function () { grpNewName = ''; grpNewSel = {}; open('groupNew'); }));
         wrap.appendChild(head);
         wrap.appendChild(clearTools());
+        if (data.suitor) wrap.appendChild(suitorCard(data.suitor, data.meId));
+        var folders = txFoldersOf(data.meId);
+        var shown = txCurrent(data.meId, folders);
+        var chatCount = (data.groups || []).filter(Boolean).length + data.contacts.length;
+        if (chatCount) wrap.appendChild(txChips(data, folders, shown));
+        var groupsShown = (data.groups || []).filter(function (row) { return row && row.meta && txInFolder(folders, 'g:' + row.meta.id, shown); });
+        var contactsShown = data.contacts.filter(function (row) { return txInFolder(folders, 'c:' + row.member.entity_id, shown); });
         try {
-            groupListRows(wrap, (data.groups || []).filter(Boolean), data.members || [], data.env);
-            wrap.appendChild(node('div', 'ph-group-sep'));
+            groupListRows(wrap, groupsShown, data.members || [], data.env);
+            if (groupsShown.length) wrap.appendChild(node('div', 'ph-group-sep'));
         } catch (e) {
             setNote('Groups: ' + errText(e), true);
+        }
+        if (shown !== TX_ALL && !groupsShown.length && !contactsShown.length) {
+            var emptyFolder = card();
+            emptyFolder.appendChild(node('div', 'ph-empty', '这个分组里还没有聊天。点「管理」把聊天放进来。'));
+            wrap.appendChild(emptyFolder);
+            return wrap;
         }
         if (!data.contacts.length) {
             var none = card();
@@ -5028,7 +6744,7 @@
             wrap.appendChild(none);
             return wrap;
         }
-        data.contacts.forEach(function (row) {
+        contactsShown.forEach(function (row) {
             var m = row.member;
             var id = String(m.entity_id);
             var c = node('div', 'ph-card sms-contact');
@@ -5049,12 +6765,15 @@
             var p = presence(row.status);
             var sub = node('div', 'ph-sub');
             joinWithDots(sub, [m.relationship_label || m.age_group_text]);
+            var lover = loverTag(data.meId, m, data.members || []);
+            if (lover) sub.appendChild(node('span', 'sms-lover inline', '\u2665 ' + lover));
             var pres = node('span', 'sms-presence inline ' + p.cls, p.text);
             sub.appendChild(pres);
             var heartLine = p.fresh ? heartText(row.status) : '';
             if (heartLine) sub.appendChild(node('span', 'sms-heart inline', heartLine));
             who.appendChild(sub);
-            var lastText = row.last && row.last.image
+            var lastText = row.last && row.last.voice ? '[语音]'
+                : row.last && row.last.image
                 ? (row.last.text === SMS_PHOTO_TEXT ? 'Photo' : 'Photo: ' + row.last.text)
                 : row.last ? row.last.text : '';
             var preview = row.last ? (row.last.side === 'mine' ? 'You: ' : '') + lastText : 'No messages yet';
@@ -5066,6 +6785,7 @@
             onTap(c, function (e) {
                 e.stopPropagation();
                 smsContactId = id;
+                smsOpenHint = { contact: m, meId: data.meId, env: data.env };
                 open('chat');
             });
             wrap.appendChild(c);
@@ -5077,10 +6797,11 @@
     function loadChat() {
         var followPlayed = refreshDropping;
         return watchClear().then(function () {
-            return Promise.all([getEnv(), getPossessedId(), getMembers(), loadPortraitIndex(), loadEmojiSet(), loadOutside()]);
+            return Promise.all([getEnv(), getPossessedId(), getMembers(), loadPortraitIndex(), loadEmojiSet(), loadOutside(), loadSuitor()]);
         }).then(function (r) {
             var meId = String(r[1]);
             var members = r[2];
+            smsMembersSeen = members;
             var contact = null;
             var contacts = textContacts(meId, members);
             for (var i = 0; i < contacts.length; i++) {
@@ -5097,11 +6818,18 @@
                 smsStick = true;
                 smsArrived = null;
             }
+            // A text another app wrote for this chat (OA's request to the boss) waits in the box,
+            // unless something is already being typed there.
+            if (smsPrefill) {
+                if (smsPrefill.contactId === String(contact.entity_id) && !smsDraft) smsDraft = smsPrefill.text;
+                smsPrefill = null;
+            }
             return loadConversation(meId, contact.entity_id).then(function (conv) {
                 var latest = 0;
                 for (var j = 0; j < conv.theirs.length; j++) {
                     if (conv.theirs[j].at > latest) latest = conv.theirs[j].at;
                 }
+                if (latest) smsSeenLocal[section] = Math.max(smsSeenLocal[section] || 0, latest);
                 var seenP = latest > conv.seenAt ? saveJson('seen', { at: latest }, section).then(function () {}, function () {}) : Promise.resolve();
                 return seenP.then(function () {
                     return rememberChat(r[0], meId, contact, conv);
@@ -5181,6 +6909,8 @@
         peer.setAttribute('title', 'Edit how ' + (data.contact.first_name || fullName(data.contact)) + ' talks');
         peer.appendChild(faceAvatar(data.contact));
         peer.appendChild(node('div', 'sms-peer-name', fullName(data.contact) + ' \u203A'));
+        var loverWord = loverTag(data.meId, data.contact, smsMembersSeen);
+        if (loverWord) peer.appendChild(node('div', 'sms-lover', '\u2665 ' + loverWord));
         var pres = node('div', 'sms-presence off', 'Offline');
         pres.id = 'sms-presence';
         peer.appendChild(pres);
@@ -5203,18 +6933,42 @@
         log.id = 'sms-log';
         // The reader turning the wheel takes the list back. The glide only writes scrollTop,
         // which does not count as that.
-        log.addEventListener('wheel', stopSmsRide);
-        log.addEventListener('scroll', function () { smsJumpSync(log); });
+        log.addEventListener('wheel', function () {
+            smsReaderAt = Date.now();
+            stopSmsRide();
+        });
+        // A drag on the scrollbar is the reader too.
+        log.addEventListener('mousedown', function () { smsReaderAt = Date.now(); });
+        log.addEventListener('scroll', function () {
+            smsJumpSync(log);
+            // Older messages come in only when the reader scrolls up to them. A log that was
+            // just swapped in sits at the top until the game's view has laid it out, and a new
+            // text then must not load more and leave the thread stuck in the middle.
+            if (log.scrollTop < SMS_EARLIER_PX && Date.now() - smsReaderAt < SMS_READER_MS &&
+                !(smsScrollRide && !smsScrollRide.dead) && document.getElementById('sms-earlier')) smsShowEarlier();
+        });
         var list = data.messages;
-        if (!list.length) {
+        if (data.loading) {
+            var wait = node('div', 'sms-loading');
+            wait.appendChild(node('div', 'sms-loading-spin'));
+            wait.appendChild(node('div', 'sms-loading-text', '正在载入对话…'));
+            log.appendChild(wait);
+        } else if (!list.length) {
             log.appendChild(node('div', 'sms-empty', 'No messages yet. Say hi to ' + (data.contact.first_name || fullName(data.contact)) + '.'));
         }
+        smsChatData = data;
+        if (smsWindow.section !== data.section) smsWindow = { section: data.section, count: SMS_PAGE };
+        var start = Math.max(0, list.length - smsWindow.count);
+        if (start > 0) log.appendChild(smsEarlierRow(start));
         var known = smsArrived;
         var nextSeen = {};
         var freshN = 0;
         for (var i = 0; i < list.length; i++) {
             var m = list[i];
+            // Every id counts as seen, drawn or not, so older messages shown later do not
+            // animate in as if they had just arrived.
             nextSeen[m.id] = true;
+            if (i < start) continue;
             var prev = i > 0 ? list[i - 1] : null;
             var next = i + 1 < list.length ? list[i + 1] : null;
             var stamped = smsStamped(prev, m);
@@ -5228,7 +6982,7 @@
                 log.appendChild(stampNode);
             }
             if (m.side === 'notice') {
-                log.appendChild(smsNotice(m.text, arriving, delay));
+                log.appendChild(m.work ? smsWorkNotice(m.text, m.work, arriving, delay) : smsNotice(m.text, arriving, delay));
                 continue;
             }
             var joinPrev = !stamped && !!prev && prev.side === m.side && m.at - prev.at < SMS_RUN_GAP_MS;
@@ -5243,7 +6997,9 @@
             log.appendChild(row);
             if (m.hint && m.side === 'theirs') log.appendChild(smsHintTag(arriving, delay));
         }
-        smsArrived = nextSeen;
+        // The loading shell has no messages yet; what it is filled with first is the thread as it
+        // was, not texts that just arrived.
+        if (!data.loading) smsArrived = nextSeen;
         var receipt = node('div', 'sms-receipt', '');
         receipt.id = 'sms-receipt';
         log.appendChild(receipt);
@@ -5410,6 +7166,38 @@
             }, function () { grpIndex = []; return []; });
     }
 
+    // The company work groups (groups/company.cfg). The reply service makes and keeps them
+    // (workgroup.js): they are shown with the phone's own groups but never written to its list.
+    function loadCompanyIndex() {
+        return call('uimod.cfg_load', { mod_id: SMS_MOD, section: SMS_G_SECTION, key: 'company' }, 'value')
+            .then(function (r) {
+                var v = parseJson(r.value);
+                var out = [];
+                (v && Array.isArray(v.groups) ? v.groups : []).forEach(function (g) {
+                    if (!g || !grpValid(g.id)) return;
+                    var ms = Array.isArray(g.members) ? g.members.map(String).filter(function (x) { return /^\d+$/.test(x); }) : [];
+                    out.push({ id: String(g.id), name: String(g.name || '工作群').slice(0, 20), members: ms, company: true });
+                });
+                return out;
+            }, function () { return []; });
+    }
+
+    // The class chats (groups/school.cfg), made and kept by the reply service (classgroup.js) for a
+    // played middle- or high-schooler: shown like the company groups, locked the same way.
+    function loadSchoolIndex() {
+        return call('uimod.cfg_load', { mod_id: SMS_MOD, section: SMS_G_SECTION, key: 'school' }, 'value')
+            .then(function (r) {
+                var v = parseJson(r.value);
+                var out = [];
+                (v && Array.isArray(v.groups) ? v.groups : []).forEach(function (g) {
+                    if (!g || !grpValid(g.id)) return;
+                    var ms = Array.isArray(g.members) ? g.members.map(String).filter(function (x) { return /^d+$/.test(x); }) : [];
+                    out.push({ id: String(g.id), name: String(g.name || '班级群').slice(0, 20), members: ms, company: true, school: true });
+                });
+                return out;
+            }, function () { return []; });
+    }
+
     // Group messages carry who said it and what they answered, which cleanList — written for
     // one-to-one threads — strips. Read the raw array and validate only the shape.
     function loadGroupBox(key, section) {
@@ -5430,24 +7218,26 @@
     function loadGroupMeta(id) {
         if (!grpValid(id)) return Promise.resolve(null);
         return call('uimod.cfg_load', { mod_id: SMS_MOD, section: grpSection(id), key: 'meta' }, 'value')
-            .then(function (r) {
-                var v = parseJson(r.value);
-                if (!v || !Array.isArray(v.members)) return null;
-                if (v.closed) return null;
-                var list = [];
-                var names = {};
-                for (var i = 0; i < v.members.length; i++) {
-                    var m = v.members[i];
-                    var mid = m && typeof m === 'object' ? String(m.id) : String(m);
-                    if (!/^\d+$/.test(mid)) continue;
-                    // A name that is only the id was stored when the person could not be looked
-                    // up; leaving it out lets grpName find the real one.
-                    if (m && typeof m === 'object' && m.name && !/^\d+$/.test(String(m.name))) names[mid] = String(m.name);
-                    if (list.indexOf(mid) < 0 && list.length < SMS_G_MAX) list.push(mid);
-                }
-                if (!list.length) return null;
-                return { id: String(id), name: String(v.name || 'Group').slice(0, 20), owner: String(v.owner || ''), members: list, memberNames: names, auto: v.auto !== false, createdAt: Number(v.createdAt) || 0 };
-            }, function () { return null; });
+            .then(function (r) { return grpMetaFrom(id, parseJson(r.value)); }, function () { return null; });
+    }
+
+    // A group's meta.cfg as the phone uses it, or null when it is not a group to show.
+    function grpMetaFrom(id, v) {
+        if (!v || !Array.isArray(v.members)) return null;
+        if (v.closed) return null;
+        var list = [];
+        var names = {};
+        for (var i = 0; i < v.members.length; i++) {
+            var m = v.members[i];
+            var mid = m && typeof m === 'object' ? String(m.id) : String(m);
+            if (!/^\d+$/.test(mid)) continue;
+            // A name that is only the id was stored when the person could not be looked
+            // up; leaving it out lets grpName find the real one.
+            if (m && typeof m === 'object' && m.name && !/^\d+$/.test(String(m.name))) names[mid] = String(m.name);
+            if (list.indexOf(mid) < 0 && list.length < SMS_G_MAX) list.push(mid);
+        }
+        if (!list.length) return null;
+        return { id: String(id), name: String(v.name || 'Group').slice(0, 20), owner: String(v.owner || ''), members: list, memberNames: names, auto: v.auto !== false, createdAt: Number(v.createdAt) || 0, company: !!v.company || !!v.school, school: !!v.school };
     }
 
     // Both sides of the group in one list, oldest first. "mine" is the player's own typing.
@@ -5513,10 +7303,13 @@
     // Loaded with the Texts page: the groups this character is in, with the last line and the
     // unread count. A group belongs to whoever made it and to everyone in it — someone who was
     // not added must not find it on their phone.
-    function loadGroupsForTexts(members, meId) {
+    function loadGroupsForTexts(members, meId, idx) {
         var me = String(meId || '');
         grpKnown = grpPeople(members);
-        return loadGroupIndex().then(function (list) {
+        if (idx) return Promise.resolve(groupsFromIndex(idx, me));
+        return Promise.all([loadGroupIndex(), loadCompanyIndex(), loadSchoolIndex()]).then(function (r) {
+            r[1] = r[2].concat(r[1]);
+            var list = r[1].concat(r[0].filter(function (g) { return !r[1].some(function (c) { return c.id === g.id; }); }));
             return Promise.all(list.map(function (g) { return loadGroupSummary(g); })).then(function (rows) {
                 return rows.filter(function (row) {
                     if (!row || !row.meta) return false;
@@ -5526,6 +7319,34 @@
                 });
             });
         }, function () { return []; });
+    }
+
+    // The groups of the Texts list from the index (lib/smsindex.js), as loadGroupSummary would give
+    // them: the service already left out closed groups and those this character is not in.
+    function groupsFromIndex(idx, me) {
+        var rows = [];
+        Object.keys(idx.groups).forEach(function (id) {
+            if (!grpValid(id)) return;
+            var g = idx.groups[id];
+            var meta = grpMetaFrom(id, g && g.meta);
+            if (!meta) return;
+            if (String(meta.owner) !== me && meta.members.indexOf(me) < 0) return;
+            var raw = g.last;
+            var last = raw && typeof raw.at === 'number' ? {
+                side: raw.side === 'mine' ? 'mine' : 'theirs', at: raw.at, text: String(raw.text || ''),
+                name: raw.side === 'mine' ? '' : grpSpeaker(meta, { name: raw.name, from: String(raw.from || '') })
+            } : null;
+            var unread = typeof g.unread === 'number' ? g.unread : 0;
+            var seen = smsSeenLocal[grpSection(id)];
+            if (unread && seen && seen >= (Number(g.theirsAt) || 0)) unread = 0;
+            rows.push({ meta: meta, last: last, unread: unread, env: null });
+        });
+        // Service-made groups first (class, then company), then the phone's own, newest line first within each.
+        var rank = function (m) { return m.school ? 0 : m.company ? 1 : 2; };
+        rows.sort(function (a, b) {
+            return rank(a.meta) - rank(b.meta) || ((b.last && b.last.at) || 0) - ((a.last && a.last.at) || 0);
+        });
+        return rows;
     }
 
     function openGroup(id) {
@@ -5551,6 +7372,7 @@
                 grpHealNames(conv.meta);
                 var latest = 0;
                 for (var i = 0; i < conv.messages.length; i++) if (conv.messages[i].side === 'theirs' && conv.messages[i].at > latest) latest = conv.messages[i].at;
+                if (latest) smsSeenLocal[grpSection(id)] = Math.max(smsSeenLocal[grpSection(id)] || 0, latest);
                 var seenP = latest > conv.seenAt ? saveJson('seen', { at: latest }, grpSection(id)).then(function () { }, function () { }) : Promise.resolve();
                 return seenP.then(function () {
                     return { env: r[0], meId: String(r[1]), members: grpKnown, meta: conv.meta, messages: conv.messages, status: conv.status };
@@ -6044,7 +7866,7 @@
     // Only the creator manages the member list; anyone in a group can read it and leave.
     // ------------------------------------------------------------------
     function grpIsOwner(meta, meId) {
-        return !!meta && !!meId && String(meta.owner) === String(meId);
+        return !!meta && !meta.company && !!meId && String(meta.owner) === String(meId);
     }
 
     function grpMetaOut(meta, patch) {
@@ -6180,7 +8002,7 @@
             else row.appendChild(node('div', 'ph-avatar sms-gface-blank'));
             var who = node('div', 'sms-pick-name', data.meta.memberNames[mid] || (m ? fullName(m) : String(mid)));
             row.appendChild(who);
-            if (String(mid) === String(data.meta.owner)) row.appendChild(node('div', 'sms-tag', 'Creator'));
+            if (String(mid) === String(data.meta.owner)) row.appendChild(node('div', 'sms-tag', data.meta.school ? '班长' : data.meta.company ? '群主' : 'Creator'));
             if (owner) {
                 var x = node('button', 'sms-pick-x', '\u00D7');
                 x.type = 'button';
@@ -6216,6 +8038,14 @@
                 if (!any) poolCard.appendChild(node('div', 'ph-empty', 'Everyone in the house is already in.'));
                 wrap.appendChild(poolCard);
             }
+        }
+        if (data.meta.school) {
+            wrap.appendChild(node('div', 'ph-caption sms-company-note', '班级群：同班同学自动加入，群主是班长；在读期间不能退群，毕业后群会解散。'));
+            return wrap;
+        }
+        if (data.meta.company) {
+            wrap.appendChild(node('div', 'ph-caption sms-company-note', '公司工作群：入职自动加入，群主是公司职位最高的人；在职期间不能退群，离职后自动退出。'));
+            return wrap;
         }
         var leave = node('button', 'ph-btn sms-gleave', owner ? 'Disband group' : 'Leave group');
         leave.type = 'button';
@@ -6299,7 +8129,7 @@
         if (owner) item('Group Name', false, function () { grpNameDraft = data.meta.name; open('groupName'); });
         item('Members', false, function () { grpAddOpen = false; open('groupMembers'); });
         if (owner) item('Manage Members', false, function () { grpAddOpen = true; open('groupMembers'); });
-        item(owner ? 'Disband Group' : 'Leave Group', true, function () { leaveGroup(data.meta.id, data.meId); });
+        if (!data.meta.company) item(owner ? 'Disband Group' : 'Leave Group', true, function () { leaveGroup(data.meta.id, data.meId); });
         var cancel = node('div', 'sms-sheet-cancel', 'Cancel');
         onTap(cancel, function (e) { e.stopPropagation(); grpHideMenuSheet(); });
         sheet.appendChild(cancel);
@@ -10844,6 +12674,148 @@
         nwSplashReveal();
     }
 
+    // ---- OA splash ----
+    // OA reads the company, its member list and the rank ladder from the game before the
+    // workbench can show. Its cover borrows the language of a company's own office suite signing
+    // an employee in: the letterhead, the badge being checked, and the three steps of single
+    // sign-on ticking off while the workbench loads. It plays on every entry from outside the
+    // app, never between OA's own pages, and stays light in either theme.
+    var oaCurtain = null;
+    var OA_SPLASH_MIN_MS = 1150;
+    var OA_SPLASH_MAX_MS = 2600;
+
+    function oaCoverLock() {
+        var svg = glyphSvg('0 0 24 24');
+        glyphPath(svg, 'M7.5 10V7.6a4.5 4.5 0 0 1 9 0V10h.7c.9 0 1.6.7 1.6 1.6v7.2c0 .9-.7 1.6-1.6 1.6H6.8c-.9 0-1.6-.7-1.6-1.6v-7.2c0-.9.7-1.6 1.6-1.6h.7zm2 0h5V7.6a2.5 2.5 0 0 0-5 0V10z', '#2F6BFF', 'evenodd');
+        return svg;
+    }
+
+    // One sign-on step: a grey ring while it waits, a turning arc on its turn, a tick once done.
+    // Each layer runs one animation of its own (a timed fade in or out, or the turn), nested,
+    // rather than one element with several: the game's view runs single animations reliably.
+    function oaCoverStep(text, cls) {
+        var row = node('div', 'oa-cover-step ' + cls);
+        var mark = row.appendChild(node('div', 'oa-cover-tick'));
+        mark.appendChild(node('div', 'oa-cover-wait'));
+        mark.appendChild(node('div', 'oa-cover-turn-in'))
+            .appendChild(node('div', 'oa-cover-turn-out'))
+            .appendChild(node('div', 'oa-cover-turn'));
+        mark.appendChild(node('div', 'oa-cover-check', '✓'));
+        row.appendChild(node('div', 'oa-cover-step-text', text));
+        return row;
+    }
+
+    function oaCurtainStop() {
+        var c = oaCurtain;
+        if (!c) return;
+        clearTimeout(c.timer);
+        clearTimeout(c.waitTimer);
+        if (c.veil.parentNode) c.veil.parentNode.removeChild(c.veil);
+        c.root.classList.remove('oa-covering');
+        oaCurtain = null;
+        if (c.phase !== 'revealing') traceNav('oa curtain dropped at ' + c.phase + ' for ' + c.screen);
+    }
+
+    function oaCurtainFade(target, ms, done) {
+        var c = oaCurtain;
+        if (!c) return;
+        fadeVeil(c.veil, target, ms, function () { return oaCurtain === c; }, done);
+    }
+
+    function oaCurtainOpen(screenId) {
+        oaCurtainStop();
+        ++openSeq;
+        awaitOpen(screenId);
+        var root = document.getElementById('app-root');
+        var veil = node('div', 'oa-cover');
+        veil.style.opacity = '0';
+        var back = veil.appendChild(node('button', 'oa-cover-back', '< Back'));
+        veil.appendChild(node('div', 'oa-cover-band'));
+        var center = veil.appendChild(node('div', 'oa-cover-center'));
+        var head = center.appendChild(node('div', 'oa-cover-head'));
+        head.appendChild(node('div', 'oa-cover-logo')).appendChild(appGlyph('oa'));
+        var names = head.appendChild(node('div', 'oa-cover-names'));
+        names.appendChild(node('div', 'oa-cover-brand', 'OA 协同办公'));
+        names.appendChild(node('div', 'oa-cover-kicker', 'ENTERPRISE WORKSPACE'));
+        var card = center.appendChild(node('div', 'oa-cover-card'));
+        var badge = card.appendChild(node('div', 'oa-cover-badge'));
+        badge.appendChild(node('div', 'oa-cover-photo'));
+        var lines = badge.appendChild(node('div', 'oa-cover-id'));
+        lines.appendChild(node('div', 'oa-cover-line name'));
+        lines.appendChild(node('div', 'oa-cover-line role'));
+        lines.appendChild(node('div', 'oa-cover-line no'));
+        badge.appendChild(node('div', 'oa-cover-chip', '员工'));
+        badge.appendChild(node('div', 'oa-cover-scan'));
+        var steps = card.appendChild(node('div', 'oa-cover-steps'));
+        steps.appendChild(oaCoverStep('验证员工身份', 'first'));
+        steps.appendChild(oaCoverStep('同步组织架构', 'second'));
+        steps.appendChild(oaCoverStep('载入工作台', 'third'));
+        var label = card.appendChild(node('div', 'oa-cover-label', '正在为你登录…'));
+        label.setAttribute('role', 'status');
+        var foot = veil.appendChild(node('div', 'oa-cover-foot'));
+        foot.appendChild(node('div', 'oa-cover-lock')).appendChild(oaCoverLock());
+        foot.appendChild(node('div', 'oa-cover-secure', '企业级安全登录 · 数据只存在本机'));
+        veil.appendChild(node('div', 'oa-cover-home'));
+        root.appendChild(veil);
+        root.classList.add('oa-covering');
+        var c = oaCurtain = { root: root, veil: veil, screen: screenId, phase: 'covering',
+            at: Date.now(), timer: null, waitTimer: 0, pending: false };
+        onTap(back, function () { splashBack(oaCurtainStop, screenId); });
+        // The workbench says on its own when the game cannot be read; the cover never holds it
+        // longer than this.
+        c.timer = setTimeout(function () {
+            if (oaCurtain !== c || c.phase === 'revealing') return;
+            oaSplashReveal();
+        }, OA_SPLASH_MAX_MS);
+        traceNav('oa cover ' + current + ' -> ' + screenId);
+        oaCurtainFade(1, 190, function () {
+            var k = oaCurtain;
+            if (!k || k !== c) return;
+            k.phase = 'loading';
+            openNow(screenId, null);
+            if (k.pending) oaSplashReveal();
+        });
+    }
+
+    function oaSplashReveal() {
+        var c = oaCurtain;
+        if (!c) return;
+        if (c.phase !== 'loading') { c.pending = true; return; }
+        var wait = OA_SPLASH_MIN_MS - (Date.now() - c.at);
+        if (wait > 0) {
+            if (!c.waitTimer) c.waitTimer = setTimeout(function () {
+                c.waitTimer = 0;
+                oaSplashReveal();
+            }, wait);
+            return;
+        }
+        c.phase = 'preparing';
+        // The last step ticks off before the cover lifts, so the sign-in reads as finished.
+        c.veil.classList.add('oa-cover-done');
+        var label = c.veil.querySelector('.oa-cover-label');
+        if (label) label.textContent = '登录成功，欢迎回来';
+        setTimeout(function () { nextFrame(function () { nextFrame(function () {
+            var k = oaCurtain;
+            if (!k || k !== c || k.phase !== 'preparing') return;
+            clearTimeout(k.timer);
+            k.phase = 'revealing';
+            traceNav('oa revealed +' + (Date.now() - k.at) + 'ms');
+            oaCurtainFade(0, 420, function () { oaCurtainStop(); });
+        }); }); }, 260);
+    }
+
+    // Called when the page under the veil has drawn. A poll of the page being left must not take
+    // the veil down before the open has landed.
+    function oaSplashCheck() {
+        var c = oaCurtain;
+        if (!c) return;
+        if (c.phase === 'covering') return;
+        if (c.screen !== current) { oaCurtainStop(); return; }
+        if (c.phase !== 'loading') return;
+        if (appOfScreen(current) !== 'oa') { oaCurtainStop(); return; }
+        oaSplashReveal();
+    }
+
     function dcColorFile(id) { return String(id).replace(/[^A-Za-z0-9_-]/g, '_') + '.png'; }
 
     function dcKind(row) {
@@ -12068,6 +14040,377 @@
     }
 
     // ------------------------------------------------------------------
+    // 成绩: a school app the way a real campus app looks (the school's badge and name on top, the
+    // report card, the week's timetable, the class teacher's remarks). ui/phone/school/report.cfg
+    // is written by the reply service (lib/school.js) from the game's own school records: grades,
+    // weekly scores, exams, attendance and homework are the game's; the subjects, the subject
+    // teachers other than the class teacher, and the remarks' wording are made there, fixed per
+    // student. The phone only reads it.
+    // ------------------------------------------------------------------
+    var SC_SECTION = 'ui/phone/school';
+    var SC_STAGES = { Child: '小学', LowTeen: '初中', HighTeen: '高中' };
+    var SC_TABS = [{ id: 'grades', text: '成绩' }, { id: 'table', text: '课表' }, { id: 'remark', text: '评语' }];
+    var SC_DAY = { Monday: '周一', Tuesday: '周二', Wednesday: '周三', Thursday: '周四', Friday: '周五', Saturday: '周六', Sunday: '周日' };
+    var SC_PARTS = [
+        { key: 'attendance', text: '出勤', max: 15, color: '#34C759' },
+        { key: 'participation', text: '课堂表现', max: 25, color: '#2F80ED' },
+        { key: 'homework', text: '作业', max: 20, color: '#F2994A' },
+        { key: 'exam', text: '考试', max: 40, color: '#9B51E0' }
+    ];
+    var scMemberId = null;
+    var scTab = 'grades';
+    // The week shown on the report card: 0 is this week, else a finished week's weekIndex.
+    var scWeek = 0;
+
+    function loadSchool() {
+        return Promise.all([getMembers(), soft(getPossessedId()), loadPortraitIndex(), cfgValue(SC_SECTION, 'report')]).then(function (r) {
+            var played = r[1] && !r[1].error ? String(r[1]) : '';
+            var students = (r[0] || []).filter(function (m) { return !!SC_STAGES[m.age_group]; });
+            var report = r[3] && r[3].byId && typeof r[3].byId === 'object' ? r[3] : null;
+            if (!memberById(students, scMemberId)) {
+                scMemberId = memberById(students, played) ? played : students.length ? String(students[0].entity_id) : null;
+                scWeek = 0;
+            }
+            var member = memberById(students, scMemberId);
+            return { played: played, students: students, member: member, file: report,
+                rep: member && report ? report.byId[String(member.entity_id)] || null : null };
+        });
+    }
+
+    // The report of the student on the page now, looked up when a tap lands: the page's buttons
+    // outlive the data they were drawn from (morph keeps unchanged nodes).
+    function scSwitch(id) {
+        if (String(id) === String(scMemberId)) return;
+        scMemberId = String(id);
+        scWeek = 0;
+        refresh();
+    }
+
+    function scGradeCls(letter) {
+        if (letter === 'A+' || letter === 'A') return 'good';
+        if (letter === 'B') return 'ok';
+        if (letter === 'C') return 'warn';
+        if (letter === 'D' || letter === 'F') return 'bad';
+        return 'none';
+    }
+
+    function scCard(title, extra) {
+        var c = node('div', 'sc-card');
+        if (title) {
+            var head = c.appendChild(node('div', 'sc-card-head'));
+            head.appendChild(node('div', 'sc-card-bar'));
+            head.appendChild(node('div', 'sc-card-title', title));
+            if (extra) head.appendChild(node('div', 'sc-card-extra', extra));
+        }
+        return c;
+    }
+
+    function scBar(value, max, color) {
+        var b = node('div', 'sc-bar');
+        var f = b.appendChild(node('div', 'sc-bar-fill'));
+        f.style.width = clampPct(max > 0 ? value / max * 100 : 0) + '%';
+        f.style.background = color;
+        return b;
+    }
+
+    // The school's letterhead: badge, name, term, and the student's card under it.
+    function scBanner(data) {
+        var rep = data.rep;
+        var m = data.member;
+        var b = node('div', 'sc-banner sc-' + (m.age_group === 'Child' ? 'kid' : 'teen'));
+        var top = b.appendChild(node('div', 'sc-banner-top'));
+        var badge = top.appendChild(node('div', 'sc-crest'));
+        badge.appendChild(node('div', 'sc-crest-ring'));
+        badge.appendChild(node('div', 'sc-crest-char', (rep && rep.school ? rep.school : '校').charAt(0)));
+        var names = top.appendChild(node('div', 'sc-banner-names'));
+        names.appendChild(node('div', 'sc-school', rep && rep.school ? rep.school : SC_STAGES[m.age_group]));
+        names.appendChild(node('div', 'sc-term', [data.file && data.file.term, rep && rep.weeks && rep.weeks.length ? '第 ' + (rep.weeks[rep.weeks.length - 1].week + 1) + ' 周' : ''].filter(Boolean).join(' · ') || '智慧校园'));
+        top.appendChild(node('div', 'sc-portal', String(m.entity_id) === data.played ? '学生端' : '家长端'));
+        var me = b.appendChild(node('div', 'sc-student'));
+        me.appendChild(faceAvatar(m));
+        var who = me.appendChild(node('div', 'sc-student-who'));
+        who.appendChild(node('div', 'sc-student-name', fullName(m)));
+        who.appendChild(node('div', 'sc-student-sub', [rep && rep.className, '学号 ' + m.entity_id].filter(Boolean).join(' · ')));
+        if (data.students.length > 1) {
+            var row = me.appendChild(node('div', 'sc-kids'));
+            data.students.forEach(function (s) {
+                var id = String(s.entity_id);
+                if (id === String(m.entity_id)) return;
+                var face = faceAvatar(s);
+                face.className += ' sc-kid';
+                onTap(face, function (e) {
+                    e.stopPropagation();
+                    scSwitch(id);
+                });
+                row.appendChild(face);
+            });
+        }
+        return b;
+    }
+
+    function scTabs() {
+        var row = node('div', 'sc-tabs');
+        SC_TABS.forEach(function (t) {
+            var tab = row.appendChild(node('div', 'sc-tab' + (scTab === t.id ? ' on' : ''), t.text));
+            var id = t.id;
+            onTap(tab, function (e) {
+                e.stopPropagation();
+                if (scTab === id) return;
+                scTab = id;
+                refresh();
+            });
+        });
+        return row;
+    }
+
+    function scStamp(letter, label) {
+        var s = node('div', 'sc-stamp ' + scGradeCls(letter));
+        s.appendChild(node('div', 'sc-stamp-letter', letter || '—'));
+        s.appendChild(node('div', 'sc-stamp-label', label));
+        return s;
+    }
+
+    function scKpi(value, label, cls) {
+        var k = node('div', 'sc-kpi');
+        k.appendChild(node('div', 'sc-kpi-val' + (cls ? ' ' + cls : ''), value));
+        k.appendChild(node('div', 'sc-kpi-label', label));
+        return k;
+    }
+
+    // ---------- elementary: the grade ladder, the way to the next grade, little red flowers ----------
+    function scKidGrades(wrap, rep) {
+        var c = wrap.appendChild(scCard('本学期成绩', '来自学校'));
+        var row = c.appendChild(node('div', 'sc-kid-row'));
+        row.appendChild(scStamp(rep.grade, '综合等级'));
+        var side = row.appendChild(node('div', 'sc-kid-side'));
+        var ladder = side.appendChild(node('div', 'sc-ladder'));
+        (rep.ladder || []).forEach(function (g) {
+            ladder.appendChild(node('div', 'sc-step' + (g === rep.grade ? ' on ' + scGradeCls(g) : ''), g));
+        });
+        var p = rep.progress;
+        if (p) {
+            var head = side.appendChild(node('div', 'sc-line'));
+            head.appendChild(node('span', 'sc-line-label', p.next ? '升到 ' + p.next + ' 的达成度' : '已经是最高等级'));
+            head.appendChild(node('span', 'sc-line-num', p.next ? p.exp + ' / ' + p.to : String(p.exp)));
+            side.appendChild(scBar(p.next ? p.exp - p.from : 1, p.next ? p.to - p.from : 1, '#FF9F0A'));
+        }
+        var a = rep.attendance;
+        var kpis = c.appendChild(node('div', 'sc-kpis'));
+        kpis.appendChild(scKpi(a ? String(a.days) : '-', '出勤天数'));
+        kpis.appendChild(scKpi(a ? String(a.unexcused) : '-', '无故缺课', a && a.unexcused ? 'bad' : ''));
+        kpis.appendChild(scKpi(rep.classRank ? rep.classRank.rank + '/' + rep.classRank.of : '-', '达成度排名'));
+        // One flower for each day at school this term, at most ten: the game's attendance days.
+        var f = wrap.appendChild(scCard('小红花', a ? '共 ' + a.days + ' 朵' : ''));
+        var flowers = f.appendChild(node('div', 'sc-flowers'));
+        var n = a ? Math.min(10, a.days) : 0;
+        for (var i = 0; i < 10; i++) flowers.appendChild(node('div', 'sc-flower' + (i < n ? ' on' : ''), i < n ? '✿' : '·'));
+        f.appendChild(node('div', 'sc-caption', n ? '每按时上一天学，就得一朵小红花。' : '按时上学就能得到小红花。'));
+    }
+
+    // ---------- middle and high school: this week, the weeks before, the exams ----------
+    function scWeekChips(rep) {
+        var weeks = (rep.weeks || []).slice(-3).reverse();
+        var row = node('div', 'sc-weeks');
+        var list = [{ id: 0, text: '本周' }].concat(weeks.map(function (w) { return { id: w.week, text: '第' + w.week + '周' }; }));
+        list.forEach(function (x) {
+            var chip = row.appendChild(node('div', 'sc-week' + (scWeek === x.id ? ' on' : ''), x.text));
+            var id = x.id;
+            onTap(chip, function (e) {
+                e.stopPropagation();
+                if (scWeek === id) return;
+                scWeek = id;
+                refresh();
+            });
+        });
+        for (var i = list.length; i < 4; i++) row.appendChild(node('div', 'sc-week blank'));
+        return row;
+    }
+
+    function scPaper(label, subject, score, note) {
+        var p = node('div', 'sc-paper');
+        var head = p.appendChild(node('div', 'sc-line'));
+        head.appendChild(node('span', 'sc-line-label', label + ' · ' + subject));
+        head.appendChild(node('span', 'sc-line-num', score === null ? note : score + ' / 20'));
+        p.appendChild(scBar(score === null ? 0 : score, 20, score !== null && score >= 16 ? '#34C759' : score !== null && score >= 10 ? '#2F80ED' : '#FF9F0A'));
+        return p;
+    }
+
+    function scThisWeek(c, rep) {
+        var cur = rep.current || {};
+        var days = cur.days || [];
+        var grid = c.appendChild(node('div', 'sc-att'));
+        days.forEach(function (d) {
+            var cell = grid.appendChild(node('div', 'sc-att-day' + (d.day === rep.today ? ' today' : '')));
+            cell.appendChild(node('div', 'sc-att-name', (SC_DAY[d.day] || '').slice(1)));
+            var came = d.attendance === 'Normal' || d.attendance === 'Late';
+            cell.appendChild(node('div', 'sc-att-dot' + (came ? ' on' : d.attendance === 'None' ? '' : ' bad'), came ? (d.attendance === 'Late' ? '迟' : '到') : d.attendance === 'None' ? '—' : '缺'));
+            cell.appendChild(node('div', 'sc-att-hw' + (d.homework === 'Completed' ? ' on' : ''), d.homework === 'Completed' ? '作业✓' : '作业 -'));
+        });
+        var papers = cur.papers || ['', ''];
+        var exam = rep.examDay ? (SC_DAY[rep.examDay] || '') : '';
+        c.appendChild(node('div', 'sc-sub-title', '本周考试' + (exam ? '（' + exam + '）' : '')));
+        c.appendChild(scPaper('上午场', papers[0], cur.morning, '未考'));
+        c.appendChild(scPaper('下午场', papers[1], cur.afternoon, '未考'));
+        if (cur.homeworkDue) c.appendChild(node('div', 'sc-note warn', '有一份作业还没交，记得带去学校。'));
+        c.appendChild(node('div', 'sc-caption', '本周的等级在周末评定后公布。'));
+    }
+
+    function scPastWeek(c, w) {
+        var row = c.appendChild(node('div', 'sc-kid-row'));
+        row.appendChild(scStamp(w.grade, '第' + w.week + '周'));
+        var side = row.appendChild(node('div', 'sc-kid-side'));
+        var total = side.appendChild(node('div', 'sc-total'));
+        total.appendChild(node('span', 'sc-total-num', String(w.total)));
+        total.appendChild(node('span', 'sc-total-of', ' / 100 分'));
+        SC_PARTS.forEach(function (p) {
+            var head = side.appendChild(node('div', 'sc-line'));
+            head.appendChild(node('span', 'sc-line-label', p.text + (p.key === 'exam' && w.papers ? '（' + w.papers.join('、') + '）' : '')));
+            head.appendChild(node('span', 'sc-line-num', w[p.key] + ' / ' + p.max));
+            side.appendChild(scBar(w[p.key], p.max, p.color));
+        });
+        if (w.relationship) c.appendChild(node('div', 'sc-note ' + (w.relationship > 0 ? 'good' : 'warn'), '同学关系 ' + (w.relationship > 0 ? '+' : '') + w.relationship));
+    }
+
+    function scTeenGrades(wrap, rep) {
+        var top = wrap.appendChild(scCard('成绩总览', rep.stageText));
+        var kpis = top.appendChild(node('div', 'sc-kpis'));
+        kpis.appendChild(scKpi(rep.grade || '评定中', '当前等级', scGradeCls(rep.grade)));
+        kpis.appendChild(scKpi(rep.previous || '-', '上次等级', scGradeCls(rep.previous)));
+        kpis.appendChild(scKpi(rep.classRank ? rep.classRank.rank + '/' + rep.classRank.of : '-', '班级排名'));
+        kpis.appendChild(scKpi(rep.current && rep.mode === 'weekly' ? String(rep.current.demerit) : '-', '纪律扣分', rep.current && rep.current.demerit >= 30 ? 'bad' : ''));
+        if (rep.current && rep.current.prep !== null && rep.current.prep !== undefined) {
+            var head = top.appendChild(node('div', 'sc-line'));
+            head.appendChild(node('span', 'sc-line-label', '备考进度'));
+            head.appendChild(node('span', 'sc-line-num', rep.current.prep + '%'));
+            top.appendChild(scBar(rep.current.prep, 100, '#9B51E0'));
+        }
+        if (rep.mode !== 'weekly') {
+            // A school off the lot keeps only the grade and the way to the next one.
+            scKidGrades(wrap, rep);
+            return;
+        }
+        var c = wrap.appendChild(scCard('成绩单', '周评定'));
+        c.appendChild(scWeekChips(rep));
+        var w = null;
+        (rep.weeks || []).forEach(function (x) { if (x.week === scWeek) w = x; });
+        if (scWeek && w) scPastWeek(c, w);
+        else scThisWeek(c, rep);
+    }
+
+    // ---------- the timetable ----------
+    function scTable(wrap, data) {
+        var rep = data.rep;
+        var tt = rep.timetable || { periods: [], days: [] };
+        var today = data.file && data.file.today;
+        var c = wrap.appendChild(scCard('本周课表', rep.hours ? rep.hours.start + '–' + rep.hours.end : ''));
+        var head = c.appendChild(node('div', 'sc-tt-row head'));
+        head.appendChild(node('div', 'sc-tt-time', ''));
+        tt.days.forEach(function (d) { head.appendChild(node('div', 'sc-tt-cell head' + (d.day === today ? ' today' : ''), SC_DAY[d.day] || d.day)); });
+        var papers = rep.current && rep.current.papers ? rep.current.papers : ['', ''];
+        var lesson = 0;
+        tt.periods.forEach(function (p) {
+            var row = c.appendChild(node('div', 'sc-tt-row' + (p.kind !== 'lesson' ? ' ' + p.kind : '')));
+            var time = row.appendChild(node('div', 'sc-tt-time'));
+            time.appendChild(node('div', 'sc-tt-label', p.label));
+            time.appendChild(node('div', 'sc-tt-hour', p.start));
+            if (p.kind !== 'lesson') {
+                row.appendChild(node('div', 'sc-tt-span', p.kind === 'lunch' ? '午餐 · 午休' : '早自习 · 自由活动'));
+                return;
+            }
+            var i = lesson++;
+            tt.days.forEach(function (d) {
+                var text = d.cells[i] || '';
+                var exam = d.exam;
+                var cell = row.appendChild(node('div', 'sc-tt-cell' + (exam ? ' exam' : '') + (d.day === today ? ' today' : '')));
+                cell.appendChild(node('div', 'sc-tt-subject', exam ? '考试' : text));
+                if (exam) cell.appendChild(node('div', 'sc-tt-teacher', p.block === 'pm' ? papers[1] : papers[0]));
+            });
+        });
+        if (rep.club) c.appendChild(node('div', 'sc-note', '社团：' + rep.club));
+        var t = wrap.appendChild(scCard('任课老师'));
+        var names = Object.keys(tt.teachers || {});
+        for (var k = 0; k < names.length; k += 2) {
+            var line = t.appendChild(node('div', 'sc-teach-row'));
+            for (var j = k; j < k + 2; j++) {
+                var cell = line.appendChild(node('div', 'sc-teach'));
+                if (j >= names.length) continue;
+                cell.appendChild(node('span', 'sc-teach-subject', names[j]));
+                cell.appendChild(node('span', 'sc-teach-name', tt.teachers[names[j]] + (names[j] === rep.teacher.subject ? '（班主任）' : '')));
+            }
+        }
+    }
+
+    // ---------- the class teacher's remarks ----------
+    function scRemark(wrap, rep) {
+        var c = wrap.appendChild(scCard('班主任评语'));
+        var who = c.appendChild(node('div', 'sc-teacher'));
+        who.appendChild(node('div', 'sc-teacher-face', rep.teacher.name.charAt(0)));
+        var n = who.appendChild(node('div', 'sc-teacher-who'));
+        n.appendChild(node('div', 'sc-teacher-name', rep.teacher.name));
+        n.appendChild(node('div', 'sc-teacher-sub', '班主任 · ' + rep.teacher.subject + (rep.classSize ? ' · 全班 ' + rep.classSize + ' 人' : '')));
+        var text = c.appendChild(node('div', 'sc-remark', (rep.remark && rep.remark.text) || '还没有评语。'));
+        text.setAttribute('role', 'note');
+        var tags = (rep.remark && rep.remark.tags) || [];
+        for (var i = 0; i < tags.length; i += 3) {
+            var row = c.appendChild(node('div', 'sc-tag-row'));
+            for (var j = i; j < i + 3; j++) {
+                if (j < tags.length) row.appendChild(node('div', 'sc-tag ' + (tags[j].tone || 'plain'), tags[j].text));
+                else row.appendChild(node('div', 'sc-tag blank'));
+            }
+        }
+        if (rep.principal) c.appendChild(node('div', 'sc-caption', '校长：' + rep.principal));
+        var h = rep.history || [];
+        if (h.length) {
+            var arc = wrap.appendChild(scCard('学籍档案'));
+            h.forEach(function (x) {
+                var line = arc.appendChild(node('div', 'sc-arc'));
+                line.appendChild(node('div', 'sc-arc-school', x.school));
+                line.appendChild(node('div', 'sc-arc-state', '已毕业'));
+                line.appendChild(node('div', 'sc-arc-grade ' + scGradeCls(x.grade), x.grade || '-'));
+            });
+            var now = arc.appendChild(node('div', 'sc-arc'));
+            now.appendChild(node('div', 'sc-arc-school', rep.school));
+            now.appendChild(node('div', 'sc-arc-state', '在读'));
+            now.appendChild(node('div', 'sc-arc-grade ' + scGradeCls(rep.grade), rep.grade || '…'));
+        }
+    }
+
+    function scEmpty(wrap, text, sub) {
+        var c = wrap.appendChild(node('div', 'sc-card sc-empty'));
+        var crest = c.appendChild(node('div', 'sc-crest big'));
+        crest.appendChild(node('div', 'sc-crest-ring'));
+        crest.appendChild(node('div', 'sc-crest-char', '学'));
+        c.appendChild(node('div', 'sc-empty-title', text));
+        if (sub) c.appendChild(node('div', 'sc-empty-sub', sub));
+        return wrap;
+    }
+
+    function renderSchool(data) {
+        var wrap = node('div', 'sc-screen');
+        wrap.appendChild(subHeader('school'));
+        if (!data.students.length) return scEmpty(wrap, '家里没有在上学的孩子', '小学、初中和高中的学生可以在这里看成绩、课表和老师的评语。');
+        var m = data.member;
+        wrap.appendChild(scBanner(data));
+        var rep = data.rep;
+        if (!rep) return scEmpty(wrap, '成绩单还没同步', '回复服务每分钟从学校取一次' + fullName(m) + '的成绩，稍等一会儿再看。');
+        if (rep.none) return scEmpty(wrap, fullName(m) + '现在没有学籍', '入学以后，成绩、课表和评语会出现在这里。');
+        rep.today = data.file && data.file.today;
+        wrap.appendChild(scTabs());
+        if (scTab === 'table') scTable(wrap, data);
+        else if (scTab === 'remark') scRemark(wrap, rep);
+        else if (m.age_group === 'Child') scKidGrades(wrap, rep);
+        else scTeenGrades(wrap, rep);
+        return wrap;
+    }
+
+    function schoolGlyph() {
+        var svg = glyphSvg('0 0 24 24');
+        glyphPath(svg, 'M12 3.6L1.8 8.7 12 13.8l8.4-4.2v5.9h1.6V8.7L12 3.6z');
+        glyphPath(svg, 'M5.6 12.2v4.1c0 1.9 2.9 3.6 6.4 3.6s6.4-1.7 6.4-3.6v-4.1L12 15.4l-6.4-3.2z');
+        return svg;
+    }
+
+    // ------------------------------------------------------------------
     // The apps of this phone
     // ------------------------------------------------------------------
     screens.home = { load: loadHome, render: renderHome };
@@ -12080,10 +14423,22 @@
         desc: 'Friendship, romance and family ties', subtitle: 'Friendship, romance and family ties',
         about: 'How close the character you play is to each person they know, as friendship, romance, family and business.',
         screens: { bonds: { load: loadBonds, render: renderBonds } } });
-    registerApp({ id: 'work', label: 'Work', cls: 'ic-work', category: 'Career', version: '1.3',
-        desc: "Who's at work, and until when", subtitle: "Who's at work, and until when",
-        about: 'Work hours of each household member on a timeline of the day, and who is at work right now.',
-        screens: { work: { load: loadWork, render: renderWork } } });
+    registerApp({ id: 'oa', label: 'OA', cls: 'ic-oa', category: 'Career', version: '2.0',
+        desc: '职级、考勤、假期，和上级说事', subtitle: '职级、考勤、假期，和上级说事',
+        featured: '工作上的事，找上级谈',
+        whatsNew: 'Work 改名为 OA，换成公司工作台的样子：考勤打卡、数据看板和绩效评级、公司通知、组织架构、薪酬职级。请假、病假、远程办公、晋升和离职走审批单，提交后发给上级，申请记录可以随时查看和撤回。',
+        about: '每个家人的工作台：公司、职级和离下一级还差多少经验，今天的上班时间，绩效、出勤、年假和旷工记录，上级和同事是谁。要请假、请病假、远程办公、谈晋升或者辞职，在这里写好申请，发给上级，在聊天里谈。',
+        screens: {
+            oa: { load: loadOa, render: renderOa, title: 'OA' },
+            oaApply: { load: loadOa, render: renderOaApply, title: '发起申请', parent: 'oa' },
+            oaOrg: { load: loadOa, render: renderOaOrg, title: '组织架构', parent: 'oa' },
+            oaPay: { load: loadOa, render: renderOaPay, title: '薪酬职级', parent: 'oa' }
+        } });
+    registerApp({ id: 'school', label: '成绩', cls: 'ic-school', glyph: schoolGlyph, category: 'Education', version: '1.0',
+        desc: '成绩单、课表和老师评语', subtitle: '成绩单、课表和老师评语',
+        featured: '孩子在学校怎么样，一看就知道',
+        about: '像学校的家校通一样：小学生看自己的 A、B、C 等级和离下一级还差多少，初中生和高中生看每周的成绩单、考试分数、出勤和作业，还有一周的课表和班主任的评语。成绩、考试、出勤和作业都来自游戏里的学校记录。',
+        screens: { school: { load: loadSchool, render: renderSchool, title: '成绩' } } });
     registerApp({ id: 'time', label: 'Time', cls: 'ic-time', category: 'Utilities', version: '1.1',
         desc: 'Pause, speed up, skip ahead', subtitle: 'Pause, speed up, skip ahead',
         about: 'The game clock in your hand: pause the city, run it at 1x, 2x or 3x, or skip an hour ahead.',
@@ -12109,7 +14464,7 @@
             news: { load: loadNews, render: renderNews },
             newsdetail: { load: loadNews, render: renderNewsDetail, title: 'Story', parent: 'news' }
         } });
-    registerApp({ id: 'texts', label: 'Texts', cls: 'ic-texts', category: 'Social', dock: true, version: '2.5',
+    registerApp({ id: 'texts', label: 'Texts', cls: 'ic-texts', category: 'Social', dock: true, system: true, version: '2.5',
         desc: 'Chat with your family', subtitle: 'Chat with your family',
         featured: 'Your family, one text away',
         whatsNew: 'A message that gives away what is on someone’s mind is marked, and the end of their story shows in the chat. Both open the new Stories app.',
@@ -12120,6 +14475,7 @@
             chat: { load: loadChat, render: renderChat, title: 'Chat', parent: 'texts' },
             group: { load: loadGroup, render: renderGroup, title: 'Group', parent: 'texts' },
             groupNew: { load: loadGroupNew, render: renderGroupNew, title: 'New Group', parent: 'texts' },
+            textsFolders: { load: loadTexts, render: renderTxFolders, title: '聊天分组', parent: 'texts' },
             groupMembers: { load: loadGroupMembers, render: renderGroupMembers, title: 'Members', parent: 'group' },
             groupName: { load: loadGroupName, render: renderGroupName, title: 'Group Name', parent: 'group' },
             persona: { load: loadPersona, render: renderPersona, title: 'Persona', parent: 'chat' }
@@ -12471,6 +14827,7 @@
                 if (txCurtain) txSplashCheck();
                 if (flCurtain) flSplashCheck();
                 if (nwCurtain) nwSplashCheck();
+                if (oaCurtain) oaSplashCheck();
                 if (noteFromLoad) {
                     setNote('', false);
                     noteFromLoad = false;
@@ -12501,6 +14858,7 @@
                 if (txCurtain) txSplashCheck();
                 if (flCurtain) flSplashCheck();
                 if (nwCurtain) nwSplashCheck();
+                if (oaCurtain) oaSplashCheck();
                 console.error('[HouseholdBoard/phone] ' + msg);
             })
             .then(function () {
@@ -12591,6 +14949,7 @@
     }
 
     function open(screenId) {
+        if (screenId !== 'home') homeEditStop();
         var owner = appOfScreen(screenId);
         if (owner && !appInstalled(owner)) screenId = 'store';
         if (!screens[screenId]) return;
@@ -12607,6 +14966,7 @@
         if (txCurtain && screenId !== txCurtain.screen) txCurtainStop();
         if (flCurtain && screenId !== flCurtain.screen) flCurtainStop();
         if (nwCurtain && screenId !== nwCurtain.screen) nwCurtainStop();
+        if (oaCurtain && screenId !== oaCurtain.screen) oaCurtainStop();
         // Texts opens on its own quiet veil, in either theme (index.html).
         if (!playedYoung && !dcCurtain && !txCurtain &&
             screenId === 'texts' && appOfScreen(current) !== 'texts') {
@@ -12625,6 +14985,13 @@
         if (!playedYoung && !dcCurtain && !txCurtain && !flCurtain && !nwCurtain &&
             screenId === 'news' && appOfScreen(current) !== 'news') {
             nwCurtainOpen(screenId);
+            return;
+        }
+        // OA signs the employee in on its own office-suite cover, on every entry from outside the
+        // app; its form, organisation and pay pages keep the normal page transition.
+        if (!playedYoung && !dcCurtain && !txCurtain && !flCurtain && !nwCurtain && !oaCurtain &&
+            screenId === 'oa' && appOfScreen(current) !== 'oa') {
+            oaCurtainOpen(screenId);
             return;
         }
         var seq = ++openSeq;
@@ -12727,6 +15094,9 @@
         } else if (dcRoot) {
             dcRoot.classList.remove('nw-open');
         }
+        // A thread opened anew starts on its newest messages again; back from its persona page
+        // it keeps what was shown.
+        if (screenId === 'chat' && from !== 'chat' && from !== 'persona') smsWindow = { section: '', count: SMS_PAGE };
         if (screenId !== 'chat') {
             wf.content.classList.remove('sms-open');
             smsThread = null;
@@ -13279,8 +15649,17 @@
         bannerBusy = true;
         var me = playedId;
         getMembers().then(function (members) {
-            return loadPortraitIndex().then(function () {
+            return Promise.all([loadPortraitIndex(), loadSmsIndex(me)]).then(function (r) {
                 var contacts = textContacts(me, members);
+                var idx = r[1];
+                // The index already holds every chat's newest incoming line (lib/smsindex.js).
+                if (idx) {
+                    return contacts.map(function (c) {
+                        var row = idx.threads[String(c.entity_id)];
+                        var m = row && row.lastIn && typeof row.lastIn.at === 'number' && typeof row.lastIn.text === 'string' ? row.lastIn : null;
+                        return { contact: c, msg: m };
+                    });
+                }
                 var jobs = [];
                 for (var i = 0; i < contacts.length; i++) jobs.push(bannerProbe(me, contacts[i]));
                 return Promise.all(jobs);

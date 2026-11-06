@@ -28,7 +28,7 @@
 
 local TAG = "[HouseholdJournal] "
 -- beat: Zoi.MealServer prints a W line every 30 s while the B2 bindings are registered.
-local FEATURES = "give|events|freelance|beat|age"
+local FEATURES = "give|events|freelance|beat|age|career|mission"
 local HEARTBEAT_S = 30
 local MEMBERS_EVERY_S = 60
 local FOOD_EVERY_S = 30

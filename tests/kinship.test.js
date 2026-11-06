@@ -70,3 +70,9 @@ test('spouses stay spouses', () => {
     byId(hh, 1).spouse_id = 2;
     assert.deepStrictEqual(kin(hh, 2, 1), { role: 'spouse', label: '' });
 });
+
+test('a contact\'s label makes a relative only when it is a family word', () => {
+    const { isKinLabel } = require('../lib/world');
+    for (const l of ['妈妈', '表哥', '姨妈', '亲戚', '哥哥']) assert.ok(isKinLabel(l), l);
+    for (const l of ['知己', '朋友', '恋人', '同事', '…', '']) assert.ok(!isKinLabel(l), l);
+});

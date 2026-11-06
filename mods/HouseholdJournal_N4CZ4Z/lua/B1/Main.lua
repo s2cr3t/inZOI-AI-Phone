@@ -24,6 +24,9 @@
 --   (lua_message.HouseholdJournal.vehicle) and prints a V line; no bridge is needed.
 -- bridge/prefs.cfg: <seq>:<target>:<preference id>:<1|0>;...
 --   B2 Zoi.PreferenceSetter gives the character that like (1) or dislike (0) and prints a K line.
+-- bridge/career.cfg: <seq>:<actor>:r:<company entity> or <seq>:<actor>:q:<quest id>/<mission id>;...
+--   B2 Zoi.CareerServer leaves the company (an OA request the boss granted) or adds a work mission
+--   (a task the boss handed out) and prints a C line.
 -- bridge/schedule.cfg is written here (Schedules): the week of the characters the bridge lists in bridge/schedids.cfg.
 -- A request that cannot be sent is reported as failed in the same format and not retried. A meal
 -- request written before this Lua instance started belongs to the world before a loaded save
@@ -49,6 +52,7 @@ local freelanceSent = {}
 local messagesSent = {}
 local vehicleSent = {}
 local prefsSent = {}
+local careerSent = {}
 local checks = {}
 local lastPoll = -1000
 local reportedShape = {}
@@ -349,6 +353,25 @@ local function pollVehicle()
     if not okS then print(TAG .. "V " .. boot .. "," .. seq .. ",fail," .. actor .. "," .. op .. ",send_failed_" .. token(err):sub(1, 60)) end
 end
 
+-- OA requests the boss granted that only the simulation thread can carry out.
+local function pollCareer()
+    local value = load("career")
+    if not value then return end
+    for seq, actor, op, arg in value:gmatch("(%d+):(%d+):(%a):([%w_/]+)") do
+        if not careerSent[seq] then
+            careerSent[seq] = true
+            if (tonumber(seq) or 0) < startedMs then
+                print(TAG .. "C " .. boot .. "," .. seq .. ",fail," .. actor .. "," .. op .. ",stale_after_reload")
+            else
+                local okS, err = send("HouseholdJournal.career", actor, seq .. ":" .. op .. ":" .. arg)
+                if not okS then
+                    print(TAG .. "C " .. boot .. "," .. seq .. ",fail," .. actor .. "," .. op .. ",send_failed_" .. token(err):sub(1, 60))
+                end
+            end
+        end
+    end
+end
+
 -- Likes and dislikes the bridge gives a character after a conversation.
 local function pollPrefs()
     local value = load("prefs")
@@ -532,6 +555,7 @@ function M.on_tick()
         pollMessages()
         pollVehicle()
         pollPrefs()
+        pollCareer()
         Schedules.tick(MOD_ID)
     end
 end

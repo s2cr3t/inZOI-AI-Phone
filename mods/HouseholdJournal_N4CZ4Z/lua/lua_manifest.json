@@ -9,6 +9,7 @@
 			{ "type": "Zoi", "key": "*", "script": "Zoi.FreelanceServer" },
 			{ "type": "Zoi", "key": "*", "script": "Zoi.MessageServer" },
 			{ "type": "Zoi", "key": "*", "script": "Zoi.PreferenceSetter" },
+			{ "type": "Zoi", "key": "*", "script": "Zoi.CareerServer" },
 			{ "type": "Zoi", "key": "*", "script": "Zoi.VehicleShop" }
 		],
 		"B1": [

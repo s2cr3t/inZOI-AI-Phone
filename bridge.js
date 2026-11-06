@@ -14,6 +14,8 @@
 //   node bridge.js stories [new <contactId> | reset <contactId>]   each contact's story line (spoilers)
 //   node bridge.js legacy           family members seen growing up, and the life records of those who died
 //   node bridge.js ties             how the household feel about each other, and the grudges they hold
+//   node bridge.js suitor-now [id]  test only: a high-school suitor sends a friend request at the next check
+//   node bridge.js class-topic      test only: a classmate opens a topic in the class chat at once
 //   node bridge.js autostart on|off  start the guardian hidden at Windows logon
 //   node bridge.js guardian start|stop|status   the resident guardian the phone's AI app controls
 //   node bridge.js simulate <text> [--thread <playerId-contactId> | --contact <id>]   test only: inject a phone text
@@ -418,7 +420,7 @@ async function cmdPreview(args) {
     const prompt = persona.replyPrompt({ snap, cfg, memory, diary, catalog, history, pending, now });
     if (ask) {
         const llm = new LlmClient(Object.assign({}, cfg.llm, { apiKey: info.apiKey, quirks_file: path.join(config.DATA_DIR, 'llm-quirks.json') }));
-        const r = await llm.json(prompt.system, prompt.user, { purpose: 'preview' });
+        const r = await llm.json(prompt.system, prompt.user, { purpose: 'preview', voice: ['messages'] });
         out('=== ' + fullName(pair.partner) + ' would answer "' + sample + '" (not sent) ===');
         out('think: ' + (r && r.think));
         for (const m of (r && r.messages) || []) out('  > ' + m);
@@ -507,6 +509,24 @@ function cmdLegacy() {
         for (const m of d.moments || []) out('  moment: ' + m);
         if (d.keepsake) out('  keepsake: ' + d.keepsake);
     }
+    return 0;
+}
+
+// Test only: the running service sends a suitor's friend request at its next check (lib/suitor.js),
+// without the wait, the quiet hours or the days between suitors. id picks the schoolmate.
+function cmdSuitorNow(args) {
+    const id = args && args[0] && /^d+$/.test(args[0]) ? args[0] : '';
+    fsx.ensureDir(config.DATA_DIR);
+    fsx.writeJson(path.join(config.DATA_DIR, 'suitor-now.request'), { at: Date.now(), suitor: id });
+    out('a suitor friend request goes out within 15 s, if the played character is in high school and nobody is courting them yet' + (id ? ' (from ' + id + ')' : ''));
+    return 0;
+}
+
+// Test only: a classmate opens a topic in the played character's class chat (lib/classgroup.js).
+function cmdClassTopic() {
+    fsx.ensureDir(config.DATA_DIR);
+    fsx.writeJson(path.join(config.DATA_DIR, 'class-topic.request'), { at: Date.now() });
+    out('a classmate opens a topic in the class chat within 10 s, if the played character is at school');
     return 0;
 }
 
@@ -657,6 +677,8 @@ async function main() {
         case 'stories': return cmdStories(argv).then((code) => process.exit(code));
         case 'legacy': return process.exit(cmdLegacy());
         case 'ties': return process.exit(cmdTies());
+        case 'suitor-now': return process.exit(cmdSuitorNow(argv));
+        case 'class-topic': return process.exit(cmdClassTopic());
         case 'autostart': return cmdAutostart(argv[0]);
         case 'simulate': return process.exit(cmdSimulate(argv));
         default:

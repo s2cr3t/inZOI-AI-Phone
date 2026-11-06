@@ -115,3 +115,13 @@ test('a job that lands on the played character is passed on, not spoken', async 
         !JSON.parse(fs.readFileSync(path.join(groups.groupDir('fam'), 'inbox.cfg'), 'utf8')).some((m) => m.from === SISTER));
     assert.ok(st.queue.length === 1 && st.queue[0].from !== SISTER && st.queue[0].from !== HOSHINO);
 });
+
+test('a queued line from someone who left the group is dropped, not left due forever', async () => {
+    const { groups } = setup(MOM);
+    const meta = groups.meta('fam');
+    const st = groups.state('fam');
+    const gone = { at: 1, from: '999', why: '自己接着说', kind: 'auto', author: MOM };
+    st.queue = [gone];
+    await groups.say('fam', meta, st, gone);
+    assert.deepStrictEqual(groups.state('fam').queue, []);
+});
