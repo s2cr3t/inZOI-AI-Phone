@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
-	"Version": 25200,
-	"VersionName": "2.52.0",
+	"Version": 25500,
+	"VersionName": "2.55.0",
 	"FriendlyName": "inZOI AI Phone",
 	"Description": "A smartphone for your Zois: family and friends text back with AI. Needs AI Phone Service: https://github.com/s2cr3t/inZOI-AI-Phone/releases/latest",
 	"Category": "UGC",

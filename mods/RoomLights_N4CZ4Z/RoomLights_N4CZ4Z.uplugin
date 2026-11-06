@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
-	"Version": 25200,
-	"VersionName": "2.52.0",
+	"Version": 25500,
+	"VersionName": "2.55.0",
 	"FriendlyName": "Room Lights",
 	"Description": "Lights turn on in rooms where someone is home and turn off in empty rooms.",
 	"Category": "UGC",

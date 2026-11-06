@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
-	"Version": 25200,
-	"VersionName": "2.52.0",
+	"Version": 25500,
+	"VersionName": "2.55.0",
 	"FriendlyName": "inZOI AI Phone - Game Link",
 	"Description": "Game-side helper for inZOI AI Phone: lets the phone read the household and carry out what Zois agree to in chat.",
 	"Category": "UGC",
