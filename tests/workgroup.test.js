@@ -70,7 +70,7 @@ function setup(t, over) {
                 if (!world.job) return null;
                 const me = world.roster.find((r) => r.id === id);
                 const boss = world.roster.filter((r) => r.rank > me.rank).sort((a, b) => b.rank - a.rank)[0];
-                return { companyId: '885', companyName: '节拍代码', roster: world.roster.slice(), bossId: boss ? boss.id : '', questIds: ['SoundCompany_Quest'] };
+                return { companyId: '885', companyName: '节拍代码', roster: world.roster.slice(), bossId: boss ? boss.id : '', questIds: world.quests0 === undefined ? ['SoundCompany_Quest'] : world.quests0 };
             },
             request(actor, op, arg, done) {
                 asked.push({ actor, op, arg, done });
@@ -318,6 +318,13 @@ test('no offer outside the hours, for the top of the company, or while the Lua m
     const old = setup(t, { mission: false });
     await old.w.tick('20522', env(1021, 9));
     assert.equal(old.posts.length, 0);
+});
+
+test('a job without work missions (a shop, a fire station): no offers, and OA is told so', async (t) => {
+    const s = setup(t, { quests0: [] });
+    await s.w.tick('20522', env(1021, 9));
+    assert.equal(s.posts.length, 0);
+    assert.deepEqual(s.read('oa/tasks.cfg').none, ['20522']);
 });
 
 test('reflected keys start in lower case', () => {
