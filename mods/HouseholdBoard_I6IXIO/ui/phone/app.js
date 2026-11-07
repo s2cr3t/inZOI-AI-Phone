@@ -1,3 +1,4 @@
+// Built by tools/build-phone.js from the pieces in src/phone: edit those, not this file.
 (function () {
     'use strict';
 
@@ -3113,6 +3114,8 @@
     var oaImpressions = {};
     // The tasks bosses handed out (ui/phone/oa/tasks.cfg, written by workgroup.js).
     var oaTasks = [];
+    // Members whose job has no tasks a boss can hand out (the work is the shift itself).
+    var oaTasksNone = [];
     var OA_TASK_STATE = {
         offered: { text: '待认领', cls: 'oa-tag' },
         given: { text: '进行中', cls: 'pill-move' },
@@ -3215,6 +3218,7 @@
             oaRequests = r[4] && Array.isArray(r[4].list) ? r[4].list : [];
             oaImpressions = r[6] && r[6].byPair && typeof r[6].byPair === 'object' ? r[6].byPair : {};
             oaTasks = r[7] && Array.isArray(r[7].list) ? r[7].list : [];
+            oaTasksNone = r[7] && Array.isArray(r[7].none) ? r[7].none.map(String) : [];
             var decisions = r[5] && r[5].byId && typeof r[5].byId === 'object' ? r[5].byId : {};
             // First the played character's job, else the first real job at home: a pupil's desk
             // has nothing on it yet.
@@ -3249,6 +3253,10 @@
     function oaTaskCard(desk) {
         var mine = oaTasks.filter(function (t) { return t && String(t.member) === String(desk.memberId); }).slice().reverse();
         var c = card('待办');
+        if (!mine.length && oaTasksNone.indexOf(String(desk.memberId)) >= 0) {
+            c.appendChild(node('div', 'ph-caption', '这份工作的活都在班上，按排班做；上级不会在工作群里另外派任务。'));
+            return c;
+        }
         if (!mine.length) {
             c.appendChild(node('div', 'ph-caption', '上级会在工作群里问谁来做。你回复「我来」接下以后，任务会出现在游戏的任务栏「工作」里，用电脑做完就算完成。'));
             return c;
