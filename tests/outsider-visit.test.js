@@ -101,41 +101,75 @@ test('a refused booking is a failure, never a trip under way', async () => {
     await assert.rejects(none.visitByAppointment('20548', vpair, { env: { hour: 14, minute: 0 } }, site, '白大煐'), /没法走过去/);
 });
 
-test('a visit by cheat: off screen, they set off now and are brought next to the player after the trip', async () => {
+function forced(opts) {
+    const o = opts || {};
     const calls = [];
-    let possessed = '20524';
+    const asked = [];
+    let possessed = o.possessed || '20524';
     const a = Object.create(Actions.prototype);
     a.log = { info() {}, warn() {} };
     // Long enough that the trip's own timer never fires during the test; the arrival is called below.
     a.visitTravelMs = 60000;
+    a.visitSettleMs = 1;
+    a.visitMode = 'force';
+    a.visitForce = async (player, visitor, on) => { asked.push([player, visitor, on]); return o.refuse ? { ok: false, detail: 'no_answer' } : { ok: true, detail: 'visit_false_-' }; };
     a.game = {
         call: async (tool, args) => { calls.push(tool + ':' + (args.entity_id || '')); if (tool === 'entity_possess') possessed = args.entity_id; return {}; },
-        soft: async () => ({})
+        soft: async (tool) => (tool === 'entity_get_simulate_state' ? { results: [{ entity_id: 20548, simulated: true }] } : {})
     };
     a.world = { possessed: async () => possessed, invalidate() {}, scanAroundPossessed: async () => new Map([['20548', 1.5]]) };
+    return { a, calls, asked };
+}
+
+test('a visit: off screen or homeless, the game is asked to simulate them, then they are brought over', async () => {
+    const { a, calls, asked } = forced();
     const r = a.visitFar('20548', vpair, {}, site, '白大煐');
     assert.strictEqual(r.ok, true);
     assert.match(r.toast, /出门了/);
     // A second "go" while on the way does not start another trip.
     assert.strictEqual(a.visitFar('20548', vpair, {}, site, '白大煐').note, '已经在路上了');
-    clearTimeout(a.cheatTrips.get('20548'));
-    a.cheatTrips.clear();
-    const here = await a.arriveByCheat('20548', '20524', '白大煐');
-    assert.strictEqual(here, true);
-    assert.deepStrictEqual(calls.slice(-3), ['entity_possess:20548', 'movement_teleport_to:20524', 'entity_possess:20524']);
-    assert.strictEqual(possessed, '20524');
+    clearTimeout(a.visitTrips.get('20548'));
+    a.visitTrips.clear();
+    assert.strictEqual(await a.arriveByForce('20548', '20524', '白大煐'), true);
+    assert.deepStrictEqual(asked, [['20524', '20548', true]]);
+    assert.deepStrictEqual(calls, ['movement_summon:20548'], 'nobody is possessed');
 });
 
-test('the cheat never runs while someone else is played, and always hands control back', async () => {
-    const a = Object.create(Actions.prototype);
-    a.log = { info() {}, warn() {} };
-    let possessed = '43386';
+test('a visitor turns up twenty metres off, is freed of their crowd walk, and walks over in a group kept for the visit', async () => {
+    const { a } = forced();
+    a.visitWalkMs = 200;
+    a.visitFollowMs = 1;
+    a.visitRefollowMs = 1000;
     const calls = [];
-    a.game = { call: async (tool, args) => { calls.push(tool); if (tool === 'movement_teleport_to') throw new Error('boom'); if (tool === 'entity_possess') possessed = args.entity_id; return {}; }, soft: async () => ({}) };
-    a.world = { possessed: async () => possessed, invalidate() {}, scanAroundPossessed: async () => new Map() };
-    assert.strictEqual(await a.arriveByCheat('20548', '20524', '白大煐'), false);
-    assert.deepStrictEqual(calls, []);
-    possessed = '20524';
-    await assert.rejects(a.arriveByCheat('20548', '20524', '白大煐'), /boom/);
-    assert.strictEqual(possessed, '20524');
+    let distance = 20;
+    a.game.soft = async (tool, args) => {
+        calls.push(tool);
+        if (tool === 'entity_get_simulate_state') return { results: [{ simulated: true }] };
+        if (tool === 'entity_reflect') return { worldTransform: { translation: { x: 1000, y: 2000, z: 150 } } };
+        if (tool === 'movement_teleport') { const dx = args.X - 1000, dy = args.Y - 2000; assert.ok(Math.abs(Math.hypot(dx, dy) - 2000) < 1); return {}; }
+        if (tool === 'zoi_group_get_info') return { has_group: false };
+        if (tool === 'zoi_group_follow') return {};
+        return {};
+    };
+    a.game.call = async (tool) => { calls.push('call:' + tool); return {}; };
+    a.world.scanAroundPossessed = async () => { distance = Math.max(1, distance - 4); return new Map([['20548', distance]]); };
+    assert.strictEqual(await a.arriveByForce('20548', '20524', '白大煐'), true);
+    assert.ok(calls.indexOf('interaction_clear_queue') < calls.indexOf('zoi_group_create'), 'crowd walk cancelled first');
+    assert.ok(!calls.includes('zoi_group_disband'), 'the group stays for the visit');
+    assert.ok(calls.filter((c) => c === 'zoi_group_follow').length <= 2, 'no gathering request every few seconds');
+    assert.ok(!calls.includes('call:movement_summon'), 'walked, not summoned');
+    await a.endVisitGroup('20548');
+    assert.ok(calls.includes('zoi_group_disband'), 'left when the visit ends');
+});
+
+test('no visit while someone else is played, nor when the game was not asked; without the mod they cannot come', async () => {
+    const other = forced({ possessed: '43386' });
+    assert.strictEqual(await other.a.arriveByForce('20548', '20524', '白大煐'), false);
+    assert.deepStrictEqual(other.asked, []);
+    const refused = forced({ refuse: true });
+    assert.strictEqual(await refused.a.arriveByForce('20548', '20524', '白大煐'), false);
+    assert.deepStrictEqual(refused.calls, []);
+    const off = forced();
+    off.a.visitMode = 'off';
+    assert.strictEqual(off.a.visitFar('20548', vpair, {}, site, '白大煐').ok, false);
 });

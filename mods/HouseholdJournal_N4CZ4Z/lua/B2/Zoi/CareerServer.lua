@@ -10,6 +10,19 @@
 --     game's FB2QuestComponent:AddQuestForCheat); detail added | already | not_added
 --   "HouseholdJournal.career", content "<seq>:a:<partner>/<site>/<start HHmm>/<end HHmm>"   book an
 --     appointment with that person at that site (lib/visits.js); detail booked_... | error_...
+--   "HouseholdJournal.career", content "<seq>:v:<visitor>"   a visit, sent once the bridge has put
+--     the visitor near the player. Someone from the town's crowd (no home, a passer-by, a suitor the
+--     game made) is parked in EntityState TimelineSimulateOnly: they keep a schedule but have no body
+--     the game runs, and anything done to them says they are busy. Put near the player they get a
+--     body (GameSpawned) and stay parked. This does what the game's own visitor spawn does: out of
+--     TimelineSimulateOnly, into GameSpawned and Simulate (reason SpawnVisitor), and the force flag
+--     the game uses for the people of a karma event keeps them simulated in full while they are there.
+--     detail visit_<city>_b<simulated><state>_t<..>_g<..>_s<..>_f<..> (each step: simulated T/F and
+--     the EntityState after it; x after a letter: that step failed)
+--   "HouseholdJournal.career", content "<seq>:e:<visitor>"   the visit is over: the flag off and, for
+--     someone who was parked before, back to TimelineSimulateOnly; detail released_<simulated now>
+--   "HouseholdJournal.career", content "<seq>:s:<character>"   how the game runs them, nothing
+--     changed; detail sim_<simulated>_force_<forced>_state_<EntityState>_<city>
 -- Result, printed to the Lua log the bridge tails:
 --   [HouseholdJournal] C <boot>,<seq>,<ok|fail>,<actor>,<op>,<detail>
 --   detail: left_<reason> | refused_<reason> | no_manager | error_...
@@ -110,6 +123,73 @@ local function appointment(owner, actor, seq, arg)
     result(seq, true, actor, "a", "booked_" .. partner .. "_" .. site .. "_" .. startHm)
 end
 
+-- The visitor, found by id: not necessarily simulated, so not reachable by a message of its own.
+local function character(id)
+    local okM, em = pcall(function() return inzoi.getB2Manager("FB2EntityManager") end)
+    if not okM or not em then return nil, "no_entity_manager" end
+    local okF, ch = pcall(function() return em:FindCharacter(entityKey(id)) end)
+    if not okF or not ch then return nil, "not_found" end
+    return ch
+end
+
+local function simText(ch)
+    local okS, sim = pcall(function() return ch:IsSimulated() end)
+    return okS and tostring(sim) or "unknown"
+end
+
+-- Where the game has them: a city id, or "-" when the game does not say.
+local function cityText(ch)
+    local okC, city = pcall(function() return ch:GetLocatedCityId() end)
+    local s = okC and tostring(city) or ""
+    return s ~= "" and s or "-"
+end
+
+local function entityStateText(ch)
+    local okE, st = pcall(function() return ch:GetEntityState() end)
+    return okE and tostring(st) or "unknown"
+end
+
+-- A step: its letter, "x" when it failed, then simulated (T/F) and the EntityState after it.
+local function step(steps, name, ch, fn)
+    local ok = pcall(fn)
+    steps[#steps + 1] = name .. (ok and "" or "x") .. (simText(ch) == "true" and "T" or "F") .. entityStateText(ch)
+end
+
+-- Visitors this mod took out of TimelineSimulateOnly, by id: put back there when the visit ends.
+local unparked = {}
+
+local function visit(actor, seq, op, arg)
+    local id = arg:match("^(%d+)$")
+    if not id then return result(seq, false, actor, op, "bad_visitor") end
+    local ch, why = character(id)
+    if not ch then return result(seq, false, actor, op, why) end
+    local S = inzoi.EB2EntityState
+    local R = inzoi.EB2EntityStateChangeReason
+    if op == "s" then
+        local okF, forced = pcall(function() return ch:IsForceSimulationLevelOfDetailZero() end)
+        return result(seq, true, actor, op, "sim_" .. simText(ch) .. "_force_" .. (okF and tostring(forced) or "unknown") .. "_state_" .. entityStateText(ch) .. "_" .. cityText(ch))
+    end
+    if op == "e" then
+        pcall(function() ch:SetForceSimulationLevelOfDetailZero(false) end)
+        if unparked[id] then
+            unparked[id] = nil
+            pcall(function() ch:RemoveEntityState(S.Simulate, R.NpcTimeline) end)
+            pcall(function() ch:AddEntityState(S.TimelineSimulateOnly, R.NpcTimeline) end)
+        end
+        return result(seq, true, actor, op, "released_" .. simText(ch))
+    end
+    local steps = { "b" .. (simText(ch) == "true" and "T" or "F") .. entityStateText(ch) }
+    local okP, parked = pcall(function() return ch:HasEntityState(S.TimelineSimulateOnly) end)
+    if okP and parked then
+        unparked[id] = true
+        step(steps, "t", ch, function() ch:RemoveEntityState(S.TimelineSimulateOnly, R.SpawnVisitor) end)
+        step(steps, "g", ch, function() ch:AddEntityState(S.GameSpawned, R.SpawnVisitor) end)
+        step(steps, "s", ch, function() ch:AddEntityState(S.Simulate, R.SpawnVisitor) end)
+    end
+    step(steps, "f", ch, function() ch:SetForceSimulationLevelOfDetailZero(true) end)
+    result(seq, true, actor, op, "visit_" .. cityText(ch) .. "_" .. table.concat(steps, "_"))
+end
+
 local function leave(actor, seq, company)
     local okM, mgr = pcall(function() return inzoi.getB2Manager("FB2CareerManager") end)
     if not okM or not mgr then return result(seq, false, actor, "r", "no_manager") end
@@ -130,10 +210,11 @@ function M.on_lua_message(self, owner, ...)
             local okT, rawActor = pcall(function() return owner:GetEntityId() end)
             local actor = okT and idText(rawActor) or ""
             local seq, op, arg = content:match("^(%d+):(%a):([%w_/]+)$")
-            if not seq or (op ~= "r" and op ~= "q" and op ~= "a") then return result(seq or "", false, actor, op or "", "bad_request") end
+            if not seq or not ("rqaves"):find(op, 1, true) then return result(seq or "", false, actor, op or "", "bad_request") end
             local ok, err
             if op == "q" then ok, err = pcall(addMission, owner, actor, seq, arg)
             elseif op == "a" then ok, err = pcall(appointment, owner, actor, seq, arg)
+            elseif op == "v" or op == "e" or op == "s" then ok, err = pcall(visit, actor, seq, op, arg)
             else ok, err = pcall(leave, actor, seq, arg) end
             if not ok then result(seq, false, actor, op, "error_" .. short(err)) end
             return
