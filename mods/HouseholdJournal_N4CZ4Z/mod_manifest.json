@@ -19,6 +19,7 @@
 		"/lua/B2/Zoi/MessageServer.lua",
 		"/lua/B2/Zoi/PreferenceSetter.lua",
 		"/lua/B1/Schedules.lua",
+		"/lua/B1/FocusCamera.lua",
 		"/lua/B1/Zoi/ActorSeen.lua"
 	],
 	"FileChecksums": []

@@ -27,6 +27,8 @@
 -- bridge/career.cfg: <seq>:<actor>:r:<company entity> or <seq>:<actor>:q:<quest id>/<mission id>;...
 --   B2 Zoi.CareerServer leaves the company (an OA request the boss granted) or adds a work mission
 --   (a task the boss handed out) and prints a C line.
+-- <phone mod>/ui/focus/camera.cfg: <ms>:<open|close>:<player>:<target>, written by the phone mod's
+--   智能对话 box. B1 FocusCamera turns the camera to that character and back (Z lines).
 -- bridge/schedule.cfg is written here (Schedules): the week of the characters the bridge lists in bridge/schedids.cfg.
 -- A request that cannot be sent is reported as failed in the same format and not retried. A meal
 -- request written before this Lua instance started belongs to the world before a loaded save
@@ -43,6 +45,7 @@ local CHECK_S = 3
 
 local Schedules = require("Schedules")
 local HJActors = require("HJActors")
+local FocusCamera = require("FocusCamera")
 
 local M = {}
 
@@ -547,6 +550,9 @@ function M.on_tick()
     local now = os.time()
     runChecks(now)
     pollHide()
+    -- The 智能对话 box camera, polled faster than the rest (FocusCamera paces itself).
+    local okF, errF = pcall(FocusCamera.tick)
+    if not okF then print(TAG .. "Z error " .. token(tostring(errF)):sub(1, 120)) end
     if now - lastPoll >= POLL_S then
         lastPoll = now
         pollBuffs(now)

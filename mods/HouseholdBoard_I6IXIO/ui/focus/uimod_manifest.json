@@ -1,0 +1,23 @@
+{
+	"name": "focus",
+	"version": "0.1.0",
+	"description": "智能对话（探路版）",
+	"author": "",
+	"entry": "index.html",
+	"display": {
+		"width": 1920,
+		"height": 1080,
+		"transparent": true,
+		"input_policy": "overlay"
+	},
+	"triggers": [
+		{
+			"id": "focus_chat",
+			"type": "interaction_menu",
+			"target": "character",
+			"label_key": "智能对话",
+			"context_pass": true,
+			"action": "show"
+		}
+	]
+}
