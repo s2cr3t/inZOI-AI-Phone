@@ -26,7 +26,18 @@
         desc: '成绩单、课表和老师评语', subtitle: '成绩单、课表和老师评语',
         featured: '孩子在学校怎么样，一看就知道',
         about: '像学校的家校通一样：小学生看自己的 A、B、C 等级和离下一级还差多少，初中生和高中生看每周的成绩单、考试分数、出勤和作业，还有一周的课表和班主任的评语。成绩、考试、出勤和作业都来自游戏里的学校记录。',
-        screens: { school: { load: loadSchool, render: renderSchool, title: '成绩' } } });
+        screens: {
+            school: { load: loadSchool, render: renderSchool, title: '成绩' },
+            scexam: { load: loadSchool, render: renderScExam, title: '雅思考试', parent: 'school' }
+        } });
+    registerApp({ id: 'booklet', label: '成长册', cls: 'ic-booklet', glyph: bookletGlyph, category: 'Household', version: '1.0',
+        desc: '每一段人生，一本小册子', subtitle: '每一段人生，一本小册子',
+        featured: '翻开这一段人生，听属于它的那首歌',
+        about: '家里每个人每过完一段人生（婴儿、童年、青春、成年……），就会多一本这一段的成长册：那时的心事、最亲近的人、日常的点滴、获得的成就、长成的性格，还有一段写给 TA 的话。每一本都有这一段人生自己的主题曲。正在过的这一段，可以先翻翻草稿。内容全部来自这段时间真实发生的事。',
+        screens: {
+            booklet: { load: loadBooklet, render: renderBooklet, title: '成长册' },
+            bookread: { load: loadBooklet, render: renderBookRead, title: '成长册', parent: 'booklet' }
+        } });
     registerApp({ id: 'time', label: 'Time', cls: 'ic-time', category: 'Utilities', version: '1.1',
         desc: 'Pause, speed up, skip ahead', subtitle: 'Pause, speed up, skip ahead',
         about: 'The game clock in your hand: pause the city, run it at 1x, 2x or 3x, or skip an hour ahead.',
@@ -121,7 +132,8 @@
         screens: {
             settings: { load: loadSettings, render: renderSettings },
             sounds: { load: loadSettings, render: renderSounds, title: 'Sounds', parent: 'settings' },
-            wallpaper: { load: loadWallpaper, render: renderWallpaper, title: 'Wallpaper', parent: 'settings' }
+            wallpaper: { load: loadWallpaper, render: renderWallpaper, title: 'Wallpaper', parent: 'settings' },
+            study: { load: loadStudy, render: renderStudy, title: '雅思学习', parent: 'settings' }
         } });
     registerApp({ id: 'store', label: 'App Store', cls: 'ic-store', category: 'Utilities', system: true, version: '1.0',
         glyph: storeGlyph, desc: 'Get, open and remove apps', subtitle: 'Get, open and remove apps',

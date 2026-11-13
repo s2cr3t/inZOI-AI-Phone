@@ -4,10 +4,16 @@
     var SETTINGS_SWITCH_MS = 200;
 
     function loadSettings() {
-        return soft(getEnv()).then(function (env) { return { env: env && !env.error ? env : null }; });
+        return Promise.all([soft(getEnv()), soft(loadStudySettings())]).then(function (r) { return { env: r[0] && !r[0].error ? r[0] : null }; });
     }
 
     function settingsRedraw() {
+        if (current === 'study') {
+            var at = wf.content.scrollTop;
+            show(renderStudy({}));
+            wf.content.scrollTop = at;
+            return;
+        }
         if (current !== 'sounds') return;
         var top = wf.content.scrollTop;
         show(renderSounds({}));
@@ -18,7 +24,10 @@
         var tile = node('div', 'st-nav-icon st-ic-' + id);
         var svg = glyphSvg('0 0 24 24');
         svg.setAttribute('class', 'st-nav-glyph');
-        if (id === 'sounds') {
+        if (id === 'study') {
+            glyphPath(svg, 'M4 5.2C6.6 4.4 9.4 4.6 12 6c2.6-1.4 5.4-1.6 8-.8v13c-2.6-.8-5.4-.6-8 .8-2.6-1.4-5.4-1.6-8-.8v-13z', '#ffffff');
+            glyphPath(svg, 'M11.3 6.8h1.4v11.4h-1.4z', '#FF9500');
+        } else if (id === 'sounds') {
             glyphPath(svg, 'M4 9.2h3.4L12 5v14l-4.6-4.2H4c-.6 0-1-.4-1-1v-3.6c0-.6.4-1 1-1z');
             glyphPath(svg, 'M15.2 8.4c1 .9 1.6 2.2 1.6 3.6s-.6 2.7-1.6 3.6l-1.1-1.1c.7-.6 1.1-1.5 1.1-2.5s-.4-1.9-1.1-2.5l1.1-1.1zM17.6 6c1.6 1.5 2.6 3.6 2.6 6s-1 4.5-2.6 6l-1.1-1.1c1.3-1.2 2.1-3 2.1-4.9s-.8-3.7-2.1-4.9L17.6 6z');
         } else {
@@ -51,7 +60,71 @@
         var s = soundSettings;
         list.appendChild(settingsNavRow('sounds', s.enabled ? s.volume + '%' : 'Off', true));
         list.appendChild(settingsNavRow('wallpaper', wallActive().label));
+        list.appendChild(settingsNavRow('study', studySettings.enabled ? STUDY_LEVELS[studySettings.level - 1].short : '关'));
         wrap.appendChild(list);
+        return wrap;
+    }
+
+    // 雅思学习: with it on, a high-schooler's English periods are IELTS lessons the class teacher
+    // gives face to face (the 智能对话 box), and exam day brings a real paper on the phone whose
+    // mark becomes the game's exam preparation. Written here only: ui/phone/saved/ielts.cfg
+    // {enabled, level}; the reply service (lib/ielts.js) reads it.
+    var STUDY_LEVELS = [
+        { level: 1, short: 'Level 1', name: 'Level 1 基础', band: '雅思约 4.0', text: '日常话题的基础词汇，一般现在时、过去时、比较级这些基础语法。' },
+        { level: 2, short: 'Level 2', name: 'Level 2 进阶', band: '雅思约 5.0', text: '教育、工作、环境等常考话题，现在完成时、被动语态、条件句；口语 Part 1 式问答。' },
+        { level: 3, short: 'Level 3', name: 'Level 3 中级', band: '雅思约 6.0', text: '社会话题和同义改写，复杂从句和连接词；小作文图表描述、阅读 True / False / Not Given。' },
+        { level: 4, short: 'Level 4', name: 'Level 4 高阶', band: '雅思约 7.0', text: '学术词汇和搭配，倒装、名词化、虚拟语气；大作文论证和口语 Part 3。' }
+    ];
+    var studySettings = { enabled: false, level: 1 };
+
+    function loadStudySettings() {
+        return cfgValue('ui/phone/saved', 'ielts').then(function (v) {
+            if (v && typeof v === 'object') {
+                studySettings = { enabled: v.enabled === true, level: v.level >= 1 && v.level <= STUDY_LEVELS.length ? Math.floor(v.level) : 1 };
+            }
+            return studySettings;
+        });
+    }
+
+    function saveStudySettings() {
+        return call('uimod.cfg_save', { mod_id: SMS_MOD, section: 'ui/phone/saved', key: 'ielts', value: JSON.stringify(studySettings) });
+    }
+
+    function loadStudy() {
+        return loadStudySettings().then(function (s) { return { study: s }; });
+    }
+
+    function renderStudy() {
+        var s = studySettings;
+        var wrap = node('div');
+        wrap.appendChild(subHeader('study'));
+        var main = card();
+        main.appendChild(settingsSwitch('雅思学习模式', s.enabled, true, function (v) {
+            studySettings.enabled = v;
+            soft(saveStudySettings());
+        }, true));
+        main.appendChild(node('div', 'ai-hint', '开启后，高中生的英语课会变成雅思课：班主任在课堂上和你面对面讲，边讲边提问。每节课学了什么、答错了什么都记在「成绩」的雅思页里。考试那天手机会弹出一张真正的试卷，题目来自这一周学过的内容，答得好不好会影响游戏里的考试成绩。'));
+        wrap.appendChild(main);
+        var lv = card();
+        lv.appendChild(node('div', 'st-label st-section', '难度'));
+        STUDY_LEVELS.forEach(function (L) {
+            var row = node('div', 'st-row st-level' + (s.level === L.level ? ' on' : '') + (s.enabled ? '' : ' off'));
+            var who = row.appendChild(node('div', 'st-level-who'));
+            who.appendChild(node('div', 'st-label', L.name + '  ·  ' + L.band));
+            who.appendChild(node('div', 'st-level-text', L.text));
+            row.appendChild(node('div', 'st-level-tick', s.level === L.level ? '✓' : ''));
+            var level = L.level;
+            onTap(row, function (e) {
+                e.stopPropagation();
+                if (!studySettings.enabled || studySettings.level === level) return;
+                studySettings.level = level;
+                soft(saveStudySettings());
+                setTimeout(function () { if (current === 'study') { var top = wf.content.scrollTop; show(renderStudy({})); wf.content.scrollTop = top; } }, SETTINGS_SWITCH_MS);
+            });
+            lv.appendChild(row);
+        });
+        lv.appendChild(node('div', 'ai-hint', '题目和讲解都是按雅思的题型、难度原创的，不是官方真题。只对在地图上有学校的高中生生效，课要由班主任在教室里上。'));
+        wrap.appendChild(lv);
         return wrap;
     }
 

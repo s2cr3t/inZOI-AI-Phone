@@ -53,7 +53,20 @@
     // setHover: tells the engine whether the cursor is over our UI.
     // NEVER replace with `pointer-events: none` -- breaks inzoi.view.hover().
     // ------------------------------------------------------------------
+    // What a hidden window claims of the screen. Not a rect of no size: the game takes no
+    // notice of one (its own area watcher never sends one either) and goes on holding the last
+    // real area it was told, so a closed window left the mouse wheel dead where it had been, and
+    // the next window to open only moved the dead place. A real rect is taken: the one pixel in
+    // the screen's top left corner (nothing negative or off the screen, which might be turned
+    // away like the empty one), where it costs nothing.
+    var AWAY = [0, 0, 1, 1];
+    function _claimNothing() {
+        try { if (window.inzoi && inzoi.view && inzoi.view.setContentRect) inzoi.view.setContentRect(AWAY[0], AWAY[1], AWAY[2], AWAY[3]); } catch (e) {}
+    }
+    root._claimNothing = _claimNothing;
+    var _hovering = false;
     function setHover(bOver) {
+        _hovering = !!bOver;
         try { if (window.inzoi && inzoi.view && inzoi.view.hover) { inzoi.view.hover(bOver); return; } } catch (e) {}
         try {
             if (typeof engine !== 'undefined') {
@@ -68,19 +81,133 @@
     root.addEventListener('wheel',      function (e) { e.stopPropagation(); }, { passive: false });
 
     // ------------------------------------------------------------------
+    // Input given back to the game. The engine injects a script into every view that tells the
+    // game "the keyboard is in this view" when a text box gets focus, and takes it back only on
+    // focusout. A text box that is hidden or taken off the page while it has focus (a window
+    // closed, the phone parked at the screen's edge, a screen left with Back) never gets a
+    // focusout, and the game went on thinking the player was typing (the mouse wheel stopped
+    // working with it). The same for the "cursor is over this view" flag of a window hidden
+    // under the cursor. Every 400 ms: a focused text box that can no longer be seen loses its
+    // focus, the engine's script is told the way it listens for it, and a hidden window gives
+    // up the hover flag. A text box that is on screen is never touched.
+    // ------------------------------------------------------------------
+    (function () {
+        function editable(el) {
+            if (!el || !el.tagName) return false;
+            var t = String(el.tagName).toLowerCase();
+            if (t === 'textarea' || el.isContentEditable) return true;
+            if (t !== 'input') return false;
+            var it = String(el.type || 'text').toLowerCase();
+            return it !== 'checkbox' && it !== 'radio' && it !== 'range' && it !== 'button' && it !== 'submit' && it !== 'reset' && it !== 'hidden';
+        }
+        function rootHidden() {
+            return root.style.display === 'none' || (document.body && document.body.style.display === 'none');
+        }
+        function onScreen(el) {
+            if (!el || !document.documentElement.contains(el) || rootHidden()) return false;
+            var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+            if (!r || r.width <= 0 || r.height <= 0) return false;
+            var vw = window.innerWidth || 1920;
+            var vh = window.innerHeight || 1080;
+            return r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh;
+        }
+        function focusOut() {
+            try { document.dispatchEvent(new FocusEvent('focusout')); return; } catch (e) {}
+            try { var ev = document.createEvent('Event'); ev.initEvent('focusout', true, false); document.dispatchEvent(ev); } catch (e2) {}
+        }
+        var typing = false;
+        var missed = 0;       // looks in a row the focused box could not be seen
+        document.addEventListener('focusin', function (e) { if (editable(e.target)) typing = true; }, true);
+        document.addEventListener('focusout', function () {
+            setTimeout(function () { if (!editable(document.activeElement)) typing = false; }, 0);
+        }, true);
+        // Hidden, it claims nothing of the screen (_claimNothing), said again and again, so that
+        // whatever the engine's own area watcher sent last, ours comes after it.
+        // For the first seconds after hiding every tick, then every 2 s while it stays hidden.
+        var hiddenSince = 0;
+        var zeroAt = 0;
+        setInterval(function () {
+            // Hidden on purpose only (display none): a size that merely reads 0 for a frame after
+            // showing must not take a shown window's area away.
+            if (root.style.display === 'none') {
+                var now = Date.now();
+                if (!hiddenSince) hiddenSince = now;
+                if (now - hiddenSince < 3000 || now - zeroAt >= 2000) {
+                    zeroAt = now;
+                    _claimNothing();
+                }
+            } else {
+                hiddenSince = 0;
+            }
+            if (_hovering && rootHidden()) setHover(false);
+            if (!typing) return;
+            var a = document.activeElement;
+            if (editable(a) && onScreen(a)) { missed = 0; return; }
+            // Twice in a row, so a box being laid out for a frame is never taken for a hidden one.
+            if (editable(a) && ++missed < 2) return;
+            missed = 0;
+            try { if (a && a !== document.body && a.blur) a.blur(); } catch (e) {}
+            setTimeout(function () {
+                if (editable(document.activeElement) && onScreen(document.activeElement)) return;
+                focusOut();
+                typing = false;
+            }, 0);
+        }, 400);
+    })();
+
+    // ------------------------------------------------------------------
     // _reportContentRect: reports #app-root screen rect to C++ InputRouter.
     // C++ uses this for synchronous wheel/click hit-testing, bypassing the
     // async hover flag timing issue (Advance runs after InputPreProcessor).
     // ------------------------------------------------------------------
+    // A hidden window claims no part of the screen, whatever the engine still reads for its
+    // size (a closed window must leave the mouse wheel to the game). The last area claimed is
+    // kept in ui/<app>/rect.cfg, to see from outside which window holds the screen.
+    function _rectHidden() {
+        return root.style.display === 'none' || !root.offsetWidth || !root.offsetHeight ||
+            (document.body && document.body.style.display === 'none');
+    }
+    var _lastRect = '';
     function _reportContentRect() {
         try {
             if (window.inzoi && inzoi.view && inzoi.view.setContentRect) {
-                inzoi.view.setContentRect(
-                    root.offsetLeft, root.offsetTop,
-                    root.offsetWidth, root.offsetHeight);
+                var off = root.style.display === 'none' || (document.body && document.body.style.display === 'none');
+                // Shown, but not laid out yet (its size reads 0 for a frame): the engine's own area
+                // watcher is asked to measure it, and this report is tried again; never a 0 for a
+                // window on screen.
+                if (!off && (!root.offsetWidth || !root.offsetHeight)) {
+                    window.__uimod_rectForce = 1;
+                    setTimeout(function () { if (root.offsetWidth && root.offsetHeight) _reportContentRect(); }, 60);
+                    return;
+                }
+                var r = off ? AWAY : [root.offsetLeft, root.offsetTop, root.offsetWidth, root.offsetHeight];
+                inzoi.view.setContentRect(r[0], r[1], r[2], r[3]);
+                var k = r.join(',');
+                if (k !== _lastRect) {
+                    _lastRect = k;
+                    cli('uimod.cfg_save', { mod_id: MOD_ID, section: 'ui/' + APP_NAME, key: 'rect', value: JSON.stringify({ rect: r, at: Date.now() }) });
+                }
             }
         } catch (e) {}
     }
+    root._reportContentRect = _reportContentRect;
+    root._rectForget = function () { _lastRect = ''; };
+
+    // Hidden by the game itself (its own Hide button, a mode where the view is put away), the
+    // view still held its part of the screen: an invisible household board took a third of
+    // the mouse wheel. Hidden, it claims nothing, lets go of the cursor and the keyboard; shown
+    // again, the engine's area watcher measures it anew.
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+            try { var a = document.activeElement; if (a && a !== document.body && a.blur) a.blur(); } catch (e) {}
+            setHover(false);
+            _claimNothing();
+        } else {
+            window.__uimod_rectForce = 1;
+            if (typeof root._rectForget === 'function') root._rectForget();
+            _reportContentRect();
+        }
+    });
 
     // Bring this view to Z-order front. Fired from the 'click' event (after the
     // full mousedown->mouseup chain, including our synthetic click below) and
@@ -142,6 +269,9 @@
     if (HAS_CLOSE_BTN) {
         if (closeBtn) closeBtn.addEventListener('click', function () {
             saveWindowState();
+            // The page may close itself without hiding the view (focus app.js: a hidden view
+            // that is shown again later can come back frozen).
+            if (typeof root._close === 'function') { root._close(); return; }
             // Defer hide via setTimeout(0): a synchronous engine.call to RemoveFromParent()
             // while cohtml is still processing the event can reset Slate input state.
             setTimeout(function () {

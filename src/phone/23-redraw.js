@@ -521,6 +521,7 @@
         momentsRenderedKey = '';
         aiRenderedKey = '';
         if (from === 'ai' && screenId !== 'ai') aiKeyDraft = '';
+        if (from === 'bookread' && screenId !== 'bookread') bkMusicStop('page left');
         if (screenId === 'ai' && from !== 'ai') {
             aiCopyResult = null;
             aiDraft = null;

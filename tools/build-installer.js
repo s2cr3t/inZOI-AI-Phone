@@ -33,7 +33,7 @@ const LICENSE_CACHE = path.join(ROOT, 'installer', 'third-party');
 
 const APP_FILES = ['bridge.js', 'supervisor.js'];
 const APP_DIRS = [
-    { dir: 'lib', test: (n) => /\.js$/.test(n) },
+    { dir: 'lib', test: (n) => /\.js$/.test(n) || n === 'voice-listen.ps1' },
     { dir: 'assets', test: (n) => n === 'buff-catalog.json' }
 ];
 

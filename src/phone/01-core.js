@@ -136,7 +136,7 @@
     ];
     // The installed apps in order, kept by the app registry (registerApp, appsRebuild).
     var APPS = [];
-    var TITLES = { family: 'Family', bonds: 'Bonds', oa: 'OA', time: 'Time', jobs: 'Jobs', freelance: 'Freelance', texts: 'Texts', messages: 'Messages', chat: 'Chat', persona: 'Persona', moments: 'Moments', ai: 'AI', settings: 'Settings', sounds: 'Sounds', wallpaper: 'Wallpaper' };
+    var TITLES = { family: 'Family', bonds: 'Bonds', oa: 'OA', time: 'Time', jobs: 'Jobs', freelance: 'Freelance', texts: 'Texts', messages: 'Messages', chat: 'Chat', persona: 'Persona', moments: 'Moments', ai: 'AI', settings: 'Settings', sounds: 'Sounds', wallpaper: 'Wallpaper', study: '雅思学习', scexam: '雅思考试', booklet: '成长册', bookread: '成长册' };
     // Mailbox on disk, one folder per conversation:
     //   <mod>/ui/phone/sms/<playerId>-<contactId>/{outbox,inbox,seen,status}.cfg
     // The phone writes outbox (the person you are playing) and seen. The contact's replies go

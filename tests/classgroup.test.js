@@ -84,7 +84,7 @@ test('the group prompt is loud in a class chat and quiet with the family', () =>
     });
     const cls = persona.groupPrompt(input('class', { kind: 'auto', topic: '对一下今天的作业答案' }));
     assert.match(cls.system, /班级群/);
-    assert.match(cls.system, /起哄/);
+    assert.match(cls.system, /每个人的样子都不一样/);
     assert.doesNotMatch(cls.system, /有爸妈、长辈在的群里话更少/);
     assert.match(cls.user, /起个话头：对一下今天的作业答案/);
     const fam = persona.groupPrompt(input(''));

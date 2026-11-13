@@ -22,7 +22,8 @@
     var scWeek = 0;
 
     function loadSchool() {
-        return Promise.all([getMembers(), soft(getPossessedId()), loadPortraitIndex(), cfgValue(SC_SECTION, 'report')]).then(function (r) {
+        return Promise.all([getMembers(), soft(getPossessedId()), loadPortraitIndex(), cfgValue(SC_SECTION, 'report'),
+            cfgValue(SC_SECTION, 'ielts'), cfgValue(SC_SECTION, 'ielts-exam'), soft(loadStudySettings())]).then(function (r) {
             var played = r[1] && !r[1].error ? String(r[1]) : '';
             var students = (r[0] || []).filter(function (m) { return !!SC_STAGES[m.age_group]; });
             var report = r[3] && r[3].byId && typeof r[3].byId === 'object' ? r[3] : null;
@@ -31,8 +32,12 @@
                 scWeek = 0;
             }
             var member = memberById(students, scMemberId);
+            var notes = r[4] && r[4].byId && typeof r[4].byId === 'object' ? r[4].byId : {};
+            var exam = r[5] && r[5].exam && typeof r[5].exam === 'object' ? r[5].exam : null;
             return { played: played, students: students, member: member, file: report,
-                rep: member && report ? report.byId[String(member.entity_id)] || null : null };
+                rep: member && report ? report.byId[String(member.entity_id)] || null : null,
+                study: member ? notes[String(member.entity_id)] || null : null,
+                exam: member && exam && String(exam.student) === String(member.entity_id) ? exam : null };
         });
     }
 
@@ -107,9 +112,9 @@
         return b;
     }
 
-    function scTabs() {
+    function scTabs(withStudy) {
         var row = node('div', 'sc-tabs');
-        SC_TABS.forEach(function (t) {
+        SC_TABS.concat(withStudy ? [{ id: 'study', text: '雅思' }] : []).forEach(function (t) {
             var tab = row.appendChild(node('div', 'sc-tab' + (scTab === t.id ? ' on' : ''), t.text));
             var id = t.id;
             onTap(tab, function (e) {
@@ -354,11 +359,139 @@
         if (!rep) return scEmpty(wrap, '成绩单还没同步', '回复服务每分钟从学校取一次' + fullName(m) + '的成绩，稍等一会儿再看。');
         if (rep.none) return scEmpty(wrap, fullName(m) + '现在没有学籍', '入学以后，成绩、课表和评语会出现在这里。');
         rep.today = data.file && data.file.today;
-        wrap.appendChild(scTabs());
-        if (scTab === 'table') scTable(wrap, data);
+        var withStudy = (m.age_group === 'HighTeen' || m.age_group === 'LowTeen') && (studySettings.enabled || !!data.study);
+        if (scTab === 'study' && !withStudy) scTab = 'grades';
+        wrap.appendChild(scTabs(withStudy));
+        if (scTab === 'study') scStudy(wrap, data);
+        else if (scTab === 'table') scTable(wrap, data);
         else if (scTab === 'remark') scRemark(wrap, rep);
         else if (m.age_group === 'Child') scKidGrades(wrap, rep);
         else scTeenGrades(wrap, rep);
+        return wrap;
+    }
+
+    // ---------- 雅思: the lessons' notes, the mistake book, the exams (lib/ielts.js) ----------
+    function scStudy(wrap, data) {
+        var st = data.study || { lessons: [], mistakes: [], exams: [] };
+        var exam = data.exam;
+        if (exam && !exam.marked) {
+            var e = wrap.appendChild(scCard('今天考试', exam.levelName || ''));
+            e.appendChild(node('div', 'sc-note', '雅思试卷 · ' + exam.questions.length + ' 道题，题目来自这一周学过的内容和错题本。答题时游戏会暂停。'));
+            var go = e.appendChild(node('button', 'ph-btn sc-exam-go', '开始答题'));
+            go.setAttribute('type', 'button');
+            onTap(go, function (ev) { ev.stopPropagation(); open('scexam'); });
+        }
+        if (st.term && st.term.units && st.term.units.length) {
+            var doneUnits = 0;
+            st.term.units.forEach(function (u) { if (u.done) doneUnits += 1; });
+            var tc = wrap.appendChild(scCard('本学期教材', '第 ' + (st.term.no || 1) + ' 学期 · ' + doneUnits + '/' + st.term.units.length));
+            var nowShown = false;
+            st.term.units.forEach(function (u) {
+                var cur = !u.done && !nowShown;
+                if (cur) nowShown = true;
+                tc.appendChild(node('div', 'sc-study-line' + (u.done ? ' good' : ''), 'Unit ' + u.n + '  ' + u.topic + ' · ' + u.grammar + (u.done ? '  已学完' : cur ? '  ← 正在学' : '')));
+            });
+        }
+        if (st.exams && st.exams.length) {
+            var x = wrap.appendChild(scCard('考试记录'));
+            st.exams.slice(0, 5).forEach(function (r) {
+                var line = x.appendChild(node('div', 'sc-arc'));
+                line.appendChild(node('div', 'sc-arc-school', '第 ' + r.day + ' 天 · 雅思试卷'));
+                line.appendChild(node('div', 'sc-arc-state', r.score + ' / ' + r.of));
+                line.appendChild(node('div', 'sc-arc-grade ' + (r.prep >= 80 ? 'good' : r.prep >= 60 ? 'ok' : 'warn'), r.prep + '%'));
+            });
+            x.appendChild(node('div', 'sc-caption', '百分比是这次的考前准备度，游戏按它给这次考试打分。'));
+        }
+        var mk = st.mistakes || [];
+        var book = wrap.appendChild(scCard('错题本', mk.length ? mk.length + ' 道' : ''));
+        if (!mk.length) book.appendChild(node('div', 'sc-note', '还没有错题。课上答错、考试答错的题会记在这里，下次考试优先再考。'));
+        mk.slice(0, 12).forEach(function (q) {
+            var it = book.appendChild(node('div', 'sc-study-q'));
+            it.appendChild(node('div', 'sc-study-en', q.en + '  ' + q.zh));
+            if (q.q) it.appendChild(node('div', 'sc-study-line', q.q));
+            if (q.given) it.appendChild(node('div', 'sc-study-line bad', '你的回答：' + q.given));
+            if (q.a) it.appendChild(node('div', 'sc-study-line good', '正确答案：' + q.a));
+        });
+        var ls = st.lessons || [];
+        if (!ls.length) {
+            var none = wrap.appendChild(scCard('课堂笔记'));
+            none.appendChild(node('div', 'sc-note', studySettings.enabled ? '下一节英语课开始后，班主任讲的内容会记在这里。' : '在「设置 → 雅思学习」里打开后，英语课会变成雅思课。'));
+            return;
+        }
+        ls.slice(0, 8).forEach(function (l) {
+            var right = 0;
+            (l.checks || []).forEach(function (c) { if (c.ok) right += 1; });
+            var c = wrap.appendChild(scCard('第 ' + l.day + ' 天 · ' + (l.topic || '英语课'), (l.checks && l.checks.length ? '答对 ' + right + '/' + l.checks.length : '') + (l.done ? '' : ' · 没讲完')));
+            (l.points || []).forEach(function (p) {
+                var it = c.appendChild(node('div', 'sc-study-q'));
+                it.appendChild(node('div', 'sc-study-en', (p.kind === 'grammar' ? '语法 · ' : '') + p.en + '  ' + p.zh));
+                if (p.note) it.appendChild(node('div', 'sc-study-line', p.note));
+                if (p.example) it.appendChild(node('div', 'sc-study-line ex', p.example));
+            });
+            if (l.teacher) c.appendChild(node('div', 'sc-caption', '授课：' + l.teacher));
+        });
+    }
+
+    // ---------- the exam paper ----------
+    // The game is paused while it is answered and goes on once it is marked. Written here only:
+    // ui/phone/school/ielts-answer.cfg {id, answers: {<n>: text}, at}.
+    var scDraft = { id: '', answers: {}, sent: false, paused: false };
+
+    function scExamPause(on) {
+        if (scDraft.paused === on) return;
+        scDraft.paused = on;
+        soft(call(on ? 'environment.pause' : 'environment.resume', {}));
+    }
+
+    function renderScExam(data) {
+        var wrap = node('div', 'sc-screen');
+        wrap.appendChild(subHeader('scexam'));
+        var exam = data.exam;
+        if (!exam) {
+            scExamPause(false);
+            return scEmpty(wrap, '现在没有要考的试卷', '考试那天，雅思试卷会出现在这里。');
+        }
+        if (scDraft.id !== exam.id) scDraft = { id: exam.id, answers: {}, sent: false, paused: scDraft.paused };
+        if (exam.marked) {
+            scExamPause(false);
+            var res = wrap.appendChild(scCard('成绩', exam.levelName || ''));
+            var kpis = res.appendChild(node('div', 'sc-kpis'));
+            kpis.appendChild(scKpi(exam.score + ' / ' + exam.questions.length, '答对'));
+            kpis.appendChild(scKpi(exam.prep + '%', '考前准备度', exam.prep >= 80 ? 'good' : exam.prep >= 60 ? 'ok' : 'warn'));
+            res.appendChild(node('div', 'sc-note', '准备度已经交给游戏，这次考试按它打分。答错的题进了错题本。'));
+            (exam.questions || []).forEach(function (q) {
+                var r = (exam.results || []).filter(function (x) { return x.n === q.n; })[0] || {};
+                var it = wrap.appendChild(scCard(q.n + '. ' + (r.correct ? '✓ 答对' : '✗ 答错')));
+                it.appendChild(node('div', 'sc-study-line', q.question));
+                it.appendChild(node('div', 'sc-study-line ' + (r.correct ? 'good' : 'bad'), '你的回答：' + (r.given || '（没写）')));
+                if (r.why) it.appendChild(node('div', 'sc-study-line', r.why));
+            });
+            return wrap;
+        }
+        scExamPause(true);
+        var head = wrap.appendChild(scCard('雅思试卷', exam.levelName || ''));
+        head.appendChild(node('div', 'sc-note', scDraft.sent ? '已交卷，正在批改…' : '共 ' + exam.questions.length + ' 题。填空和选择写答案即可，造句和翻译写完整的句子。游戏已暂停。'));
+        exam.questions.forEach(function (q) {
+            var c = wrap.appendChild(scCard(q.n + '.'));
+            c.appendChild(node('div', 'sc-study-line', q.question));
+            var long = q.type === 'make' || q.type === 'translate';
+            var box = c.appendChild(node(long ? 'textarea' : 'input', 'sc-exam-box'));
+            if (!long) box.setAttribute('type', 'text');
+            box.setAttribute('maxlength', '200');
+            box.value = scDraft.answers[q.n] || '';
+            if (scDraft.sent) box.setAttribute('disabled', 'disabled');
+            var n = q.n;
+            box.addEventListener('input', function () { scDraft.answers[n] = box.value; });
+        });
+        var submit = wrap.appendChild(node('button', 'ph-btn sc-exam-go' + (scDraft.sent ? ' off' : ''), scDraft.sent ? '批改中…' : '交卷'));
+        submit.setAttribute('type', 'button');
+        onTap(submit, function (ev) {
+            ev.stopPropagation();
+            if (scDraft.sent) return;
+            scDraft.sent = true;
+            soft(call('uimod.cfg_save', { mod_id: SMS_MOD, section: SC_SECTION, key: 'ielts-answer', value: JSON.stringify({ id: scDraft.id, answers: scDraft.answers, at: Date.now() }) }));
+            refresh();
+        });
         return wrap;
     }
 

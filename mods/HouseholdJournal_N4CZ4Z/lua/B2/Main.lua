@@ -31,6 +31,9 @@ local TAG = "[HouseholdJournal] "
 local FEATURES = "give|events|freelance|beat|age|career|mission|visit"
 local HEARTBEAT_S = 30
 local MEMBERS_EVERY_S = 60
+-- How long after this script starts an empty household is asked about every few seconds.
+local EMPTY_FAST_FOR_S = 60
+local startedAt = os.time()
 local FOOD_EVERY_S = 30
 local FOOD_MAX = 200
 local FOOD_SLICE = 500
@@ -303,6 +306,7 @@ end
 function M.on_begin()
     local okM, mgr = pcall(function() return inzoi.getB2Manager("FB2EntityManager") end)
     if okM and mgr then entities = mgr else errors = errors + 1 end
+    startedAt = os.time()
     refreshMembers()
     lastMembers = os.time()
     for event, kind in pairs(KINDS) do
@@ -331,7 +335,11 @@ end
 
 function M.on_tick()
     local now = os.time()
-    if now - lastMembers >= MEMBERS_EVERY_S or memberCount == 0 and now - lastMembers >= 5 then
+    -- An empty household is asked about again every few seconds only in the first minute (a save
+    -- still coming in); after that it is a household being made in Character Studio, where the
+    -- game is asked as little as possible (two players' games crashed there, 2026-11-11).
+    local early = now - startedAt < EMPTY_FAST_FOR_S
+    if now - lastMembers >= MEMBERS_EVERY_S or memberCount == 0 and early and now - lastMembers >= 5 then
         lastMembers = now
         refreshMembers()
     end

@@ -28,7 +28,10 @@ const MODS = [
             { dir: 'ui/phone/wallpapers', test: (n) => /^preset-[a-z0-9-]+\.jpg$/.test(n) },
             { dir: 'ui/phone/emoji', test: (n) => /\.png$/i.test(n) || n === 'set.cfg' },
             // Dream Car's vehicle photos, made by tools/capture-cars.js.
-            { dir: 'ui/phone/cars', test: (n) => /\.png$/i.test(n) }
+            { dir: 'ui/phone/cars', test: (n) => /\.png$/i.test(n) },
+            // The 成长册 songs, made by tools/make-booklet-music.js; the booklets themselves
+            // (ui/phone/booklet/board.cfg) are personal and never ship.
+            { dir: 'ui/phone/booklet/songs', test: (n) => /\.webm$/i.test(n) }
         ],
         seeds: ['ui/board/saved/window.cfg'],
         empty: [],

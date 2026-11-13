@@ -1364,6 +1364,8 @@
         var photo = smsThread && smsPhotos[smsThread];
         var empty = !photo && (!box || !String(box.value || '').replace(/^\s+|\s+$/g, ''));
         btn.className = 'sms-send' + (empty || smsSending || smsClearingAt ? ' off' : '');
+        // With the box empty the microphone takes the send button's place (23-voice.js).
+        voiceSyncField();
     }
 
     // The box grows with what is typed, up to a few lines, then scrolls.
@@ -1391,7 +1393,8 @@
             smsFocused = false;
         }
         if (log) {
-            smsStick = (log.scrollHeight - log.scrollTop - log.clientHeight) < 48;
+            // A glide to the newest line under way counts as at the bottom (patchChat).
+            smsStick = !!(smsScrollRide && !smsScrollRide.dead) || (log.scrollHeight - log.scrollTop - log.clientHeight) < 48;
             smsScroll = log.scrollTop;
         }
     }
@@ -1463,10 +1466,13 @@
         }
     }
 
-    // A text arriving in the open thread replaces the header and the message list only. The
-    // compose box is the same element before and after, so it keeps its focus, its draft and
-    // the input method's half-typed word. Rebuilding it while a word was being composed left
-    // the game's text input stuck, and no text field in the phone took a key after that.
+    // A text arriving in the open thread, or one sent, changes the open thread in place, the way a
+    // chat app does: the thread is drawn afresh off the page and only what differs goes in. The
+    // list itself, the header (unless the person changed), every message already shown and the
+    // compose box stay the same elements, so nothing blinks, the list keeps its scroll position and
+    // only the new lines slide in. (Swapping the whole list and header in for each text made the
+    // screen flash every time.) The compose box keeps its focus, its draft and the input method's
+    // half-typed word: rebuilding it mid-word left the game's text input stuck.
     function patchChat(data) {
         var box = document.getElementById('sms-box');
         var oldLog = document.getElementById('sms-log');
@@ -1479,6 +1485,8 @@
         if (!oldNav) return false;
         var prevKey = smsRenderedKey;
         var prevSection = smsShownSection;
+        // The typing row on the page keeps its state; the fresh draw starts it hidden.
+        var wasTyping = smsTypingShown;
         var fresh = renderChat(data);
         var nav = null;
         var log = null;
@@ -1492,14 +1500,75 @@
             smsShownSection = prevSection;
             return false;
         }
-        smsStick = (oldLog.scrollHeight - oldLog.scrollTop - oldLog.clientHeight) < 48;
+        // A glide to the newest line still under way is at the bottom too, though it is not there
+        // yet: a text and the voice message after it arrive a moment apart, and the second must
+        // not find the list halfway down and leave it there. The reader's wheel ends a glide.
+        var riding = !!(smsScrollRide && !smsScrollRide.dead);
+        smsStick = riding || (oldLog.scrollHeight - oldLog.scrollTop - oldLog.clientHeight) < 48;
         smsScroll = oldLog.scrollTop;
         if (smsScrollRide) smsScrollRide.dead = true;
-        wrap.replaceChild(nav, oldNav);
-        wrap.replaceChild(log, oldLog);
+        if (smsNavSig(nav) !== smsNavSig(oldNav)) wrap.replaceChild(nav, oldNav);
+        smsTypingShown = wasTyping;
+        smsMergeLog(oldLog, log);
         applySmsStatus(data, true);
-        restoreSmsLog(log);
+        // At the bottom (or on the way there): glide from where the list is to the new bottom.
+        // Scrolled up reading: the list stays where it is.
+        if (smsStick && oldLog.clientHeight > 0) {
+            var below = oldLog.scrollHeight - oldLog.clientHeight - oldLog.scrollTop;
+            if (below > 1) rideSmsLog(oldLog, below);
+        }
+        smsJumpSync(oldLog);
         return true;
+    }
+
+    // A line of the list with the key smsMergeLog knows it by from one drawing to the next.
+    function smsKeyed(log, el, key) {
+        el._k = key;
+        log.appendChild(el);
+        return el;
+    }
+
+    // What a line of the list shows, without how it arrived (the slide-in class and its delay).
+    function smsSig(el) {
+        return el.outerHTML
+            .replace(/\s?\bsms-(in|chip-in)\b/g, '')
+            .replace(/\s*(-webkit-)?animation-delay:\s*[^;"]*;?/g, '')
+            .replace(/style="\s+/g, 'style="')
+            .replace(/\s+"/g, '"')
+            .replace(/ style=""/g, '');
+    }
+
+    // The header without what applySmsStatus keeps up to date on its own (presence, heart).
+    function smsNavSig(el) {
+        return el.outerHTML.replace(/<(\w+)[^>]*id="sms-(presence|heart)"[^>]*>[^<]*/g, '<$1 id="sms-$2">');
+    }
+
+    // Brings the list on the page to the freshly drawn one, line by line (each line keyed in
+    // renderChat by _k): a line the same as before stays the very element it was, a new or changed
+    // one goes in, one gone is taken out. The typing row and the read receipt stay as they are;
+    // applySmsStatus keeps them current.
+    function smsMergeLog(oldLog, newLog) {
+        var byKey = {};
+        var i;
+        for (i = 0; i < oldLog.children.length; i++) {
+            var oc = oldLog.children[i];
+            if (oc._k) byKey[oc._k] = oc;
+        }
+        var kids = [];
+        for (i = 0; i < newLog.children.length; i++) kids.push(newLog.children[i]);
+        var next = [];
+        for (i = 0; i < kids.length; i++) {
+            var nc = kids[i];
+            var old = nc._k ? byKey[nc._k] : null;
+            var keep = old && (nc._k === 'typing' || nc._k === 'receipt' || smsSig(old) === smsSig(nc));
+            next.push(keep ? old : nc);
+            if (old) delete byKey[nc._k];
+        }
+        for (i = 0; i < next.length; i++) {
+            var at = oldLog.children[i] || null;
+            if (at !== next[i]) oldLog.insertBefore(next[i], at);
+        }
+        while (oldLog.children.length > next.length) oldLog.removeChild(oldLog.lastChild);
     }
 
     function stickToBottom() {
@@ -1923,14 +1992,15 @@
             var wait = node('div', 'sms-loading');
             wait.appendChild(node('div', 'sms-loading-spin'));
             wait.appendChild(node('div', 'sms-loading-text', '正在载入对话…'));
+            wait._k = 'loading';
             log.appendChild(wait);
         } else if (!list.length) {
-            log.appendChild(node('div', 'sms-empty', 'No messages yet. Say hi to ' + (data.contact.first_name || fullName(data.contact)) + '.'));
+            smsKeyed(log, node('div', 'sms-empty', 'No messages yet. Say hi to ' + (data.contact.first_name || fullName(data.contact)) + '.'), 'empty');
         }
         smsChatData = data;
         if (smsWindow.section !== data.section) smsWindow = { section: data.section, count: SMS_PAGE };
         var start = Math.max(0, list.length - smsWindow.count);
-        if (start > 0) log.appendChild(smsEarlierRow(start));
+        if (start > 0) smsKeyed(log, smsEarlierRow(start), 'earlier');
         var known = smsArrived;
         var nextSeen = {};
         var freshN = 0;
@@ -1950,10 +2020,10 @@
             if (stamped) {
                 stampNode = node('div', 'sms-stamp' + (prev ? '' : ' first') + (arriving ? ' sms-in' : ''), smsStamp(m.game, data.env));
                 if (arriving) setSmsDelay(stampNode, delay);
-                log.appendChild(stampNode);
+                smsKeyed(log, stampNode, 's:' + m.id);
             }
             if (m.side === 'notice') {
-                log.appendChild(m.work ? smsWorkNotice(m.text, m.work, arriving, delay) : smsNotice(m.text, arriving, delay));
+                smsKeyed(log, m.work ? smsWorkNotice(m.text, m.work, arriving, delay) : smsNotice(m.text, arriving, delay), 'n:' + m.id);
                 continue;
             }
             var joinPrev = !stamped && !!prev && prev.side === m.side && m.at - prev.at < SMS_RUN_GAP_MS;
@@ -1965,15 +2035,15 @@
             if (time && m.side === 'mine') row.appendChild(time);
             row.appendChild(bubble);
             if (time && m.side !== 'mine') row.appendChild(time);
-            log.appendChild(row);
-            if (m.hint && m.side === 'theirs') log.appendChild(smsHintTag(arriving, delay));
+            smsKeyed(log, row, 'm:' + m.id);
+            if (m.hint && m.side === 'theirs') smsKeyed(log, smsHintTag(arriving, delay), 'h:' + m.id);
         }
         // The loading shell has no messages yet; what it is filled with first is the thread as it
         // was, not texts that just arrived.
         if (!data.loading) smsArrived = nextSeen;
         var receipt = node('div', 'sms-receipt', '');
         receipt.id = 'sms-receipt';
-        log.appendChild(receipt);
+        smsKeyed(log, receipt, 'receipt');
         var typing = node('div', 'sms-row theirs sms-typing');
         typing.id = 'sms-typing';
         var dots = node('div', 'sms-bubble sms-dots');
@@ -1982,7 +2052,7 @@
         dots.appendChild(node('span', 'sms-dot d3'));
         typing.appendChild(dots);
         typing.style.display = 'none';
-        log.appendChild(typing);
+        smsKeyed(log, typing, 'typing');
         smsTypingShown = false;
         wrap.appendChild(log);
 

@@ -39,7 +39,9 @@ engine runs the file as it is.
 | 18-app-store | App Store |
 | 19-dream-car | Dream Car |
 | 20-news | News |
+| 21-booklet | 成长册 |
 | 21-school | 成绩 |
 | 22-apps | the apps of this phone |
 | 23-redraw | redrawing in place |
+| 23-voice | voice input in the texts (lib/voice.js) |
 | 24-banner | incoming text banner, the poll |

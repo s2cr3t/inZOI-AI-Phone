@@ -18,6 +18,28 @@
 			"label_key": "智能对话",
 			"context_pass": true,
 			"action": "show"
+		},
+		{
+			"id": "focus_homework",
+			"type": "interaction_menu",
+			"target": "character",
+			"label_key": "写作业",
+			"context_pass": true,
+			"action": "show"
+		},
+		{
+			"id": "focus_review",
+			"type": "interaction_menu",
+			"target": "character",
+			"label_key": "复习功课",
+			"context_pass": true,
+			"action": "show"
+		},
+		{
+			"id": "focus_boot",
+			"type": "game_mode",
+			"mode": ["TopView", "ShoulderView", "ActiveMode", "DiveView", "Vehicle"],
+			"action": "show"
 		}
 	]
 }
