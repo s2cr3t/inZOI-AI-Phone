@@ -21,7 +21,8 @@ const MODS = [
             paths.PHONE_MOD_ID + '.uplugin',
             'mod_manifest.json',
             'ui/uimod_apps.json'
-        ].concat(UI_FILES.map((f) => 'ui/board/' + f), UI_FILES.map((f) => 'ui/phone/' + f)),
+        // ui/focus: the face-to-face window (talk box, textbook, homework, review).
+        ].concat(UI_FILES.map((f) => 'ui/board/' + f), UI_FILES.map((f) => 'ui/phone/' + f), UI_FILES.map((f) => 'ui/focus/' + f)),
         trees: [
             // Made by tools/make-sounds.js.
             { dir: 'ui/phone/sounds', test: (n) => /\.(webm|ogg|wav)$/i.test(n) },
@@ -40,7 +41,9 @@ const MODS = [
         // code, covers) and must never ship.
         privateDirs: ['ui/phone/sms', 'ui/phone/moments', 'ui/phone/portraits', 'ui/phone/service', 'ui/phone/saved', 'ui/phone/persona',
             'ui/phone/wallpapers/custom', 'ui/phone/music', 'ui/phone/freelance', 'ui/phone/messages', 'ui/phone/vehicle',
-            'ui/phone/groups', 'ui/phone/media', 'ui/phone/diag', 'ui/phone/stories', 'ui/phone/oa', 'ui/phone/suitor']
+            'ui/phone/groups', 'ui/phone/media', 'ui/phone/diag', 'ui/phone/stories', 'ui/phone/oa', 'ui/phone/suitor',
+            // The face-to-face window's talks, lessons and homework.
+            'ui/focus/talk', 'ui/focus/book', 'ui/focus/homework', 'ui/focus/saved']
     },
     {
         id: paths.JOURNAL_MOD_ID,
