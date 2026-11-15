@@ -8,6 +8,10 @@
 --   "HouseholdJournal.career", content "<seq>:r:<company entity>"   leave that company
 --   "HouseholdJournal.career", content "<seq>:q:<quest id>/<mission id>"   add that mission (the
 --     game's FB2QuestComponent:AddQuestForCheat); detail added | already | not_added
+--   "HouseholdJournal.career", content "<seq>:p:<points>"   that many team-project points for the
+--     character's company project, credited to them: the game's own Add_TeamProjectPoint_<n>
+--     scripts run on them, the largest first (a hard planned task finished, lib/workplan.js);
+--     detail added_<points> | partly_<points> | error_...
 --   "HouseholdJournal.career", content "<seq>:a:<partner>/<site>/<start HHmm>/<end HHmm>"   book an
 --     appointment with that person at that site (lib/visits.js); detail booked_... | error_...
 --   "HouseholdJournal.career", content "<seq>:v:<visitor>"   a visit, sent once the bridge has put
@@ -99,6 +103,28 @@ local function addMission(owner, actor, seq, arg)
     local okA, has = pcall(function() return comp:HasQuest(quest, mission) end)
     if okA and has then return result(seq, true, actor, "q", "added") end
     result(seq, false, actor, "q", okA and "not_added" or "unchecked")
+end
+
+-- The game's own team-project point scripts (Script table rows Add_TeamProjectPoint_<n>: one
+-- AddTeamProjectPoint execute on Self).
+local POINT_SCRIPTS = { 20, 16, 15, 12, 10, 8, 6, 5, 3 }
+
+local function addPoints(owner, actor, seq, arg)
+    local want = tonumber(arg)
+    if not want or want < 1 or want > 200 then return result(seq, false, actor, "p", "bad_points") end
+    local okC, comp = pcall(function() return owner:GetComponent(inzoi.EB2ComponentType.Stat) end)
+    if not okC or not comp then return result(seq, false, actor, "p", "no_component") end
+    local left, given = want, 0
+    for _, n in ipairs(POINT_SCRIPTS) do
+        while left >= n do
+            local ok = pcall(function() comp:CallScriptInternal("Add_TeamProjectPoint_" .. n) end)
+            if not ok then break end
+            left = left - n
+            given = given + n
+        end
+    end
+    if given == 0 then return result(seq, false, actor, "p", "none_" .. want) end
+    result(seq, true, actor, "p", (given == want and "added_" or "partly_") .. given)
 end
 
 -- An appointment the character makes with someone, the way the game's phone books one after an
@@ -210,9 +236,10 @@ function M.on_lua_message(self, owner, ...)
             local okT, rawActor = pcall(function() return owner:GetEntityId() end)
             local actor = okT and idText(rawActor) or ""
             local seq, op, arg = content:match("^(%d+):(%a):([%w_/]+)$")
-            if not seq or not ("rqaves"):find(op, 1, true) then return result(seq or "", false, actor, op or "", "bad_request") end
+            if not seq or not ("rqavesp"):find(op, 1, true) then return result(seq or "", false, actor, op or "", "bad_request") end
             local ok, err
             if op == "q" then ok, err = pcall(addMission, owner, actor, seq, arg)
+            elseif op == "p" then ok, err = pcall(addPoints, owner, actor, seq, arg)
             elseif op == "a" then ok, err = pcall(appointment, owner, actor, seq, arg)
             elseif op == "v" or op == "e" or op == "s" then ok, err = pcall(visit, actor, seq, op, arg)
             else ok, err = pcall(leave, actor, seq, arg) end

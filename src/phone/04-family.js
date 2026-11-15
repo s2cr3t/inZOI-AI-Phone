@@ -1,43 +1,335 @@
     // ------------------------------------------------------------------
-    // Family
+    // 我的家: the home's floor plan, storey by storey, with who of the family is where.
+    // ui/phone/home/plan.cfg, written by the reply service (lib/homeplan.js) while the played
+    // character is at home: { name, home, size, storeys: [{ level, walls: [[x1,y1,x2,y2]],
+    // rooms: [{ name, kind, x, y }], items: [{ kind, name, x, y, yaw }] }], people: [{ id, name,
+    // first, x, y, level, doing }], at }. Lot centimetres; away from home it is the plan last seen.
     // ------------------------------------------------------------------
+    var HOME_SECTION = 'ui/phone/home';
+    var homeLevel = null;
+    var HOME_MARGIN = 80;
+    // How each kind of thing is drawn: a letter on a tinted tile; doors and windows as bars.
+    var HOME_ITEMS = {
+        bed: { t: '床', c: '#5E5CE6' }, living: { t: '沙', c: '#FF9F0A' }, kitchen: { t: '厨', c: '#FF453A' },
+        bath: { t: '浴', c: '#64D2FF' }, dining: { t: '餐', c: '#30D158' }, study: { t: '桌', c: '#BF5AF2' },
+        laundry: { t: '洗', c: '#0A84FF' }
+    };
+
     function loadFamily() {
-        return Promise.all([getEnv(), getEmotionTable(), getMembers()]).then(function (r) {
-            var members = r[2];
-            return Promise.all([
-                getWorkStatus(members),
-                Promise.all(members.map(function (m) {
-                    var id = String(m.entity_id);
-                    return Promise.all([soft(getEmotion(id)), soft(getStats(id))]);
-                }))
-            ]).then(function (d) {
-                return { env: r[0], table: r[1], members: members, work: d[0], details: d[1] };
-            });
+        return Promise.all([cfgValue(HOME_SECTION, 'plan'), getMembers(), soft(getPossessedId()), cfgValue(HOME_SECTION, 'names')]).then(function (r) {
+            return { plan: r[0] && Array.isArray(r[0].storeys) ? r[0] : null, members: r[1] || [], played: r[2] && !r[2].error ? String(r[2]) : '',
+                names: r[3] && r[3].byKey ? r[3] : null };
         });
     }
 
-    function renderFamily(data) {
-        var wrap = node('div');
-        wrap.appendChild(subHeader('family'));
-        if (!data.members.length) {
+    // The span of everything drawn, over all storeys, so switching storeys keeps the same frame.
+    function homeBounds(plan) {
+        var b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+        plan.storeys.forEach(function (s) {
+            s.walls.forEach(function (w) {
+                b.x0 = Math.min(b.x0, w[0], w[2]); b.x1 = Math.max(b.x1, w[0], w[2]);
+                b.y0 = Math.min(b.y0, w[1], w[3]); b.y1 = Math.max(b.y1, w[1], w[3]);
+            });
+        });
+        if (!isFinite(b.x0)) return null;
+        b.x0 -= HOME_MARGIN; b.y0 -= HOME_MARGIN; b.x1 += HOME_MARGIN; b.y1 += HOME_MARGIN;
+        return b;
+    }
+
+    // The nearest room on the same storey, for "在客厅".
+    function homeRoomAt(storey, p) {
+        var best = null;
+        (storey ? storey.rooms : []).forEach(function (r) {
+            if (r.kind === 'yard') return;
+            var d = Math.sqrt((r.x - p.x) * (r.x - p.x) + (r.y - p.y) * (r.y - p.y));
+            if (d < 450 && (!best || d < best.d)) best = { r: r, d: d };
+        });
+        return best ? best.r.name : '';
+    }
+
+    function homeSvg(w, h, b) {
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', String(w));
+        svg.setAttribute('height', String(h));
+        svg.setAttribute('viewBox', b.x0 + ' ' + b.y0 + ' ' + (b.x1 - b.x0) + ' ' + (b.y1 - b.y0));
+        svg.setAttribute('class', 'hm-svg');
+        return svg;
+    }
+
+    function homeMap(data, plan, storey, width) {
+        var b = homeBounds(plan);
+        var box = node('div', 'hm-map');
+        if (!b) return box;
+        var scale = width / (b.x1 - b.x0);
+        var height = Math.round((b.y1 - b.y0) * scale);
+        box.style.width = width + 'px';
+        box.style.height = height + 'px';
+        var at = function (x, y) { return { left: Math.round((x - b.x0) * scale), top: Math.round((y - b.y0) * scale) }; };
+        var svg = box.appendChild(homeSvg(width, height, b));
+        storey.walls.forEach(function (wl) {
+            var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', String(wl[0])); line.setAttribute('y1', String(wl[1]));
+            line.setAttribute('x2', String(wl[2])); line.setAttribute('y2', String(wl[3]));
+            line.setAttribute('class', 'hm-wall');
+            line.setAttribute('stroke-width', String(Math.max(10, Math.round(2.6 / scale))));
+            line.setAttribute('stroke-linecap', 'square');
+            svg.appendChild(line);
+        });
+        // Doors and windows over the walls, then furniture, then room names, then people.
+        storey.items.forEach(function (it) {
+            var p = at(it.x, it.y);
+            if (it.kind === 'door' || it.kind === 'window') {
+                var bar = box.appendChild(node('div', 'hm-' + it.kind));
+                bar.style.left = p.left + 'px';
+                bar.style.top = p.top + 'px';
+                bar.style.transform = 'translate(-50%, -50%) rotate(' + (it.yaw || 0) + 'deg)';
+                return;
+            }
+            var k = HOME_ITEMS[it.kind];
+            if (!k) return;
+            var tile = box.appendChild(node('div', 'hm-item', it.kind === 'living' && /电视|TV/i.test(it.name) ? '视' : k.t));
+            tile.style.left = p.left + 'px';
+            tile.style.top = p.top + 'px';
+            tile.style.color = k.c;
+            tile.style.background = oaTint(k.c, 0.16);
+        });
+        storey.rooms.forEach(function (r) {
+            var p = at(r.x, r.y);
+            var label = box.appendChild(node('div', 'hm-room' + (r.kind === 'yard' ? ' yard' : '') + (r.set ? ' set' : ''), r.name));
+            label.style.left = p.left + 'px';
+            label.style.top = p.top + 'px';
+            if (r.key) onTap(label, function (e) { e.stopPropagation(); homeOpenRoom(r); });
+        });
+        (plan.home ? plan.people || [] : []).forEach(function (pp) {
+            if (pp.level !== storey.level) return;
+            var p = at(pp.x, pp.y);
+            var dot = box.appendChild(node('div', 'hm-person'));
+            dot.style.left = p.left + 'px';
+            dot.style.top = p.top + 'px';
+            var m = memberById(data.members, pp.id) || { entity_id: pp.id, first_name: pp.first || pp.name };
+            dot.appendChild(faceAvatar(m));
+            dot.appendChild(node('div', 'hm-person-name', pp.first || pp.name));
+            dot.style.borderColor = accentFor(pp.id);
+        });
+        return box;
+    }
+
+// ---------- 我的家: what a room is, as the player says (ui/phone/home/names.cfg) ----------
+    // { v, site, byKey: { <room key>: { kind, owners, owner, name, at } } }, written only here; the reply
+    // service gives it to every character, so they all call the room the player's way.
+    var HOME_KINDS = [
+        { id: 'living', name: '客厅' }, { id: 'bed', name: '卧室' }, { id: 'kitchen', name: '厨房' }, { id: 'bath', name: '卫生间' },
+        { id: 'study', name: '书房' }, { id: 'dining', name: '餐厅' }, { id: 'laundry', name: '洗衣间' }, { id: 'yard', name: '院子' },
+        { id: 'other', name: '其他' }
+    ];
+    var HOME_NAME_MAX = 12;
+    var homeEditKey = null;
+    var homeDraft = null;     // { key, kind, owners: [id], name }; a bedroom may be a couple's
+
+    function homeOpenRoom(r) {
+        homeEditKey = r.key;
+        var s = r.set || {};
+        var owners = s.owners && s.owners.length ? s.owners.map(String) : s.owner ? [String(s.owner)] : [];
+        homeDraft = { key: r.key, kind: s.kind || r.kind || 'other', owners: owners, name: s.name || '' };
+        open('homeRoom');
+    }
+
+    // What the characters will call it, as the service will (lib/rooms.js setText).
+    function homeSpoken(draft, data) {
+        if (draft.name) return draft.name;
+        var k = HOME_KINDS.filter(function (x) { return x.id === draft.kind; })[0];
+        var base = k && k.id !== 'other' ? k.name : '房间';
+        if (draft.kind === 'bed' && draft.owners.length) {
+            var who = draft.owners.map(function (id) { var m = memberById(data.members, id); return m ? (draft.owners.length > 1 ? m.first_name || fullName(m) : fullName(m)) : ''; })
+                .filter(Boolean);
+            if (who.length) return who.join('和') + '的卧室';
+        }
+        return base;
+    }
+
+    function homeSaveNames(data, key, value) {
+        var cur = data.names && data.names.byKey ? data.names.byKey : {};
+        var byKey = {};
+        for (var k in cur) if (cur.hasOwnProperty(k) && k !== key) byKey[k] = cur[k];
+        if (value) byKey[key] = value;
+        return saveJson('names', { v: 1, site: data.plan.site, byKey: byKey }, HOME_SECTION);
+    }
+
+    function homeChip(text, on, fn) {
+        var chip = node('div', 'oa-chip hm-chip' + (on ? ' on' : ''), text);
+        onTap(chip, function (e) { e.stopPropagation(); fn(); });
+        return chip;
+    }
+
+    function renderHomeRoom(data) {
+        var wrap = node('div', 'hm-screen');
+        wrap.appendChild(subHeader('homeRoom'));
+        var plan = data.plan;
+        var room = null;
+        (plan ? plan.storeys : []).forEach(function (s) { s.rooms.forEach(function (r) { if (r.key === homeEditKey) room = r; }); });
+        if (!room || !homeDraft || homeDraft.key !== homeEditKey) {
             var none = card();
-            none.appendChild(node('div', 'ph-empty', 'No household members found.'));
+            none.appendChild(node('div', 'ph-empty', '找不到这个房间了，回户型图再选一次。'));
             wrap.appendChild(none);
             return wrap;
         }
-        data.members.forEach(function (m, idx) {
-            var detail = data.details[idx] || [];
-            var c = card();
-            var work = data.work[String(m.entity_id)];
-            var subParts = [m.relationship_label || m.age_group_text];
-            if (m.has_career) {
-                var state = describe(work, null, data.env);
-                subParts.push(state.text);
-            }
-            c.appendChild(personRow(m, subParts, moodPill(emotionLabel(data.table, detail[0]))));
-            c.appendChild(needsGrid(detail[1], FAMILY_NEEDS));
-            wrap.appendChild(c);
+        var head = card();
+        head.className += ' hm-head';
+        head.appendChild(node('div', 'hm-name', homeSpoken(homeDraft, data)));
+        head.appendChild(node('div', 'hm-sub', '自动识别：' + (room.auto || '房间') + '（看里面的家具判断）'));
+        wrap.appendChild(head);
+
+        var kinds = card('这是什么房间');
+        var chips = [];
+        HOME_KINDS.forEach(function (k) {
+            chips.push(homeChip(k.name, homeDraft.kind === k.id, function () {
+                homeDraft.kind = k.id;
+                if (k.id !== 'bed') homeDraft.owners = [];
+                refresh();
+            }));
         });
+        kinds.appendChild(oaChipRows(chips, 4));
+        wrap.appendChild(kinds);
+
+        if (homeDraft.kind === 'bed') {
+            var whose = card('谁的卧室（可多选，比如夫妻、情侣）');
+            var owners = [homeChip('不属于谁', !homeDraft.owners.length, function () { homeDraft.owners = []; refresh(); })];
+            data.members.forEach(function (m) {
+                if (NO_PHONE_STEPS[m.age_group] && m.age_group !== 'Toddler') return;
+                var id = String(m.entity_id);
+                owners.push(homeChip(m.first_name || fullName(m), homeDraft.owners.indexOf(id) >= 0, function () {
+                    // Read the draft as it is now: a redraw keeps the old chip (morph).
+                    var list = homeDraft ? homeDraft.owners.slice() : [];
+                    var at = list.indexOf(id);
+                    if (at >= 0) list.splice(at, 1);
+                    else list.push(id);
+                    if (homeDraft) homeDraft.owners = list;
+                    refresh();
+                }));
+            });
+            whose.appendChild(oaChipRows(owners, 3));
+            wrap.appendChild(whose);
+        }
+
+        var named = card('自己起个名字（可不填）');
+        var input = named.appendChild(node('input', 'oa-wage-input hm-name-input'));
+        input.id = 'hm-room-name';
+        applyUiFont(input);
+        input.setAttribute('maxlength', String(HOME_NAME_MAX));
+        input.setAttribute('placeholder', '比如：琴房、婴儿房、健身房');
+        input.value = homeDraft.name || '';
+        input.addEventListener('input', function () { if (homeDraft) homeDraft.name = input.value.trim().slice(0, HOME_NAME_MAX); });
+        named.appendChild(node('div', 'oa-foot', '填了名字就用这个名字；不填就按上面选的类型叫。'));
+        wrap.appendChild(named);
+
+        var act = card();
+        act.appendChild(node('div', 'hm-sub', '保存后，家里每个人在聊天里都会这样称呼这个房间，比如「我在' + homeSpoken(homeDraft, data) + '」。'));
+        var row = act.appendChild(node('div', 'oa-ap-actions'));
+        var reset = row.appendChild(node('div', 'oa-ap-btn', '恢复自动识别'));
+        var save = row.appendChild(node('div', 'oa-ap-btn primary', '保存'));
+        onTap(reset, function (e) {
+            e.stopPropagation();
+            homeSaveNames(data, homeEditKey, null).then(function () { setNote('已恢复自动识别。', false); open('family'); }, function () { setNote('没保存上，再试一次。', true); });
+        });
+        onTap(save, function (e) {
+            e.stopPropagation();
+            // The box on the page now (a redraw may have put a new one in its place).
+            var box = document.getElementById('hm-room-name');
+            if (box && homeDraft) homeDraft.name = String(box.value || '').trim().slice(0, HOME_NAME_MAX);
+            var d = homeDraft;
+            if (!d) return;
+            var bedOwners = d.kind === 'bed' ? d.owners.slice() : [];
+            homeSaveNames(data, d.key, { kind: d.kind, owners: bedOwners, owner: bedOwners[0] || '', name: d.name, at: Date.now() }).then(function () {
+                setNote('已保存：' + homeSpoken(d, data) + '。', false);
+                open('family');
+            }, function () { setNote('没保存上，再试一次。', true); });
+        });
+        wrap.appendChild(act);
+        return wrap;
+    }
+
+    function renderFamily(data) {
+        var wrap = node('div', 'hm-screen');
+        wrap.appendChild(subHeader('family'));
+        var plan = data.plan;
+        if (!plan || !plan.storeys.length) {
+            var none = card();
+            none.appendChild(node('div', 'ph-empty', L('Your home is drawn the next time you are there.')));
+            wrap.appendChild(none);
+            return wrap;
+        }
+        var levels = plan.storeys.map(function (s) { return s.level; });
+        if (homeLevel === null || levels.indexOf(homeLevel) < 0) {
+            // The storey the played character is on, else the ground floor.
+            var me = (plan.people || []).filter(function (p) { return p.id === data.played; })[0];
+            homeLevel = me && levels.indexOf(me.level) >= 0 ? me.level : levels[0];
+        }
+        var storey = plan.storeys.filter(function (s) { return s.level === homeLevel; })[0];
+        var head = card();
+        head.className += ' hm-head';
+        var top = head.appendChild(node('div', 'ph-row'));
+        var who = top.appendChild(node('div', 'ph-who'));
+        who.appendChild(node('div', 'hm-name', plan.name || L('My Home')));
+        var rooms = 0;
+        plan.storeys.forEach(function (s) { rooms += s.rooms.filter(function (r) { return r.kind !== 'yard'; }).length; });
+        who.appendChild(node('div', 'hm-sub', L('{n} storeys · {r} rooms', { n: plan.storeys.length, r: rooms }) + (plan.home ? '' : ' · ' + L('away from home'))));
+        if (levels.length > 1) {
+            var seg = head.appendChild(node('div', 'hm-seg'));
+            levels.forEach(function (lv) {
+                var here = (plan.home ? plan.people || [] : []).filter(function (p) { return p.level === lv; }).length;
+                var item = seg.appendChild(node('div', 'hm-seg-item' + (lv === homeLevel ? ' on' : ''), L('Floor {n}', { n: lv + 1 }) + (here ? ' · ' + here : '')));
+                onTap(item, function (e) {
+                    e.stopPropagation();
+                    if (homeLevel === lv) return;
+                    homeLevel = lv;
+                    refresh();
+                });
+            });
+        }
+        wrap.appendChild(head);
+        var mapCard = card();
+        mapCard.className += ' hm-card';
+        var width = 296;
+        mapCard.appendChild(homeMap(data, plan, storey, width));
+        wrap.appendChild(mapCard);
+        // The rooms of this storey: what each is, and a tap to say otherwise.
+        var list = storey.rooms.filter(function (r) { return r.key; });
+        if (list.length) {
+            var roomsCard = card('房间 · 点一下设定是什么');
+            list.forEach(function (r) {
+                var row = roomsCard.appendChild(node('div', 'ph-row hm-room-row'));
+                var w = row.appendChild(node('div', 'ph-who'));
+                w.appendChild(node('div', 'hm-where-name', r.name));
+                w.appendChild(node('div', 'hm-where-sub', r.set ? '你设定的 · 自动识别是' + (r.auto || '房间') : '自动识别'));
+                row.appendChild(node('span', 'ph-pill ' + (r.set ? 'pill-work' : 'pill-idle'), r.set ? '已设定' : '设定'));
+                onTap(row, function (e) { e.stopPropagation(); homeOpenRoom(r); });
+            });
+            wrap.appendChild(roomsCard);
+        }
+        // Who is where, under the map.
+        var people = plan.home ? plan.people || [] : [];
+        if (people.length) {
+            var where = card();
+            people.forEach(function (pp) {
+                var s = plan.storeys.filter(function (x) { return x.level === pp.level; })[0];
+                var room = homeRoomAt(s, pp);
+                var row = where.appendChild(node('div', 'ph-row hm-where'));
+                var m = memberById(data.members, pp.id) || { entity_id: pp.id, first_name: pp.first || pp.name };
+                row.appendChild(faceAvatar(m));
+                var w = row.appendChild(node('div', 'ph-who'));
+                w.appendChild(node('div', 'hm-where-name', pp.name));
+                w.appendChild(node('div', 'hm-where-sub', [levels.length > 1 ? L('Floor {n}', { n: pp.level + 1 }) : '', room, pp.doing].filter(Boolean).join(' · ')));
+                onTap(row, function (e) {
+                    e.stopPropagation();
+                    if (homeLevel === pp.level) return;
+                    homeLevel = pp.level;
+                    refresh();
+                });
+            });
+            wrap.appendChild(where);
+        }
+        wrap.appendChild(node('div', 'ph-caption hm-foot', plan.home ? L('Drawn from the game while you are at home.')
+            : L('Away from home: this is how it looked the last time you were there.')));
         return wrap;
     }
 

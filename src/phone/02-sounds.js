@@ -420,7 +420,7 @@
 
     function card(label) {
         var c = node('div', 'ph-card');
-        if (label) c.appendChild(node('div', 'ph-card-label', label));
+        if (label) c.appendChild(node('div', 'ph-card-label', L(label)));
         return c;
     }
 
@@ -435,7 +435,7 @@
 
     function needsGrid(stats, keys) {
         if (!stats || stats.error || !stats.stats) {
-            return node('div', 'ph-empty', 'Needs unavailable');
+            return node('div', 'ph-empty', L('Needs unavailable'));
         }
         var grid = node('div', 'ph-needs');
         var names = stats.stat_names || {};
@@ -471,13 +471,13 @@
 
     function subHeader(screenId, title) {
         var head = node('div', 'ph-head');
-        var back = node('div', 'ph-back', '< Back');
+        var back = node('div', 'ph-back', L('< Back'));
         onTap(back, function (e) {
             e.stopPropagation();
             open(backTarget(screenId));
         });
         head.appendChild(back);
-        head.appendChild(node('div', 'ph-title', title || TITLES[screenId] || ''));
+        head.appendChild(node('div', 'ph-title', L(title || TITLES[screenId] || '')));
         return head;
     }
 

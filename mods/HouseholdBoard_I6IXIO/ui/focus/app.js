@@ -14,6 +14,8 @@
 // 复习功课, the second entry this page puts in the game's menu (trigger focus_review).
 // And ui/focus/homework/<player> (lib/homework.js): the day's exercise sheet, shown by 写作业 (trigger
 // focus_homework) or when the student does the game's homework, handed in through ui/focus/homework/answer.
+// And ui/focus/plan/<player> (lib/workplan.js): the day's tasks at the company the player runs,
+// opened by the service (request op plan), answered through ui/focus/plan/answer.
 // And ui/focus/voice {seq, state, text, key, enabled}, written by the service (lib/voice.js): voice
 // input. While the player holds its key the box says it is listening; what was heard lands in
 // the input and is said by itself a moment later, unless a key is pressed first to change it.
@@ -1107,6 +1109,242 @@ focusNote('loaded');
         openHomework(player, seq);
     }
 
+    // ---- 今日工作安排: the day's tasks at the company the player runs (lib/workplan.js) ----
+    // ui/focus/plan/<player> (the service): { seq, day, company, slots: [{ from, to, label }],
+    // tasks: [{ id, name }], last: { <id>: [[task]] }, decided,
+    // people: [{ id, name, rankName, me, skills, slots: [[task], [task]] }] };
+    // the answer goes to ui/focus/plan/answer { seq, player, day, assign: { <id>: [[task], [task]] } },
+    // one list per work slot (上午, 下午). Each slot may have several tasks; 自由安排 clears it.
+    // Tasks have a tier (tasks[].tier, tierName, need, bonus; view.tiers, view.skill): a person
+    // whose level in the company skill (people[].level) is below a task's need cannot be given it.
+    var PLAN_RECT = { left: 360, top: 60, width: 1200, height: 940 };
+    var PLAN_POLL_MS = 1500;
+    var PLAN_PER_ROW = 7;
+    var plan = null;          // { player, cls, geo, view, choice: { <id>: [[task], ...] }, timer }
+    var pl = null;            // the panel's parts, built once
+
+    function plArr(v) {
+        return Object.prototype.toString.call(v) === '[object Array]';
+    }
+
+    // A person's tasks as one list per slot; a flat list counts for every slot.
+    function plSlots(v, n) {
+        var nested = plArr(v) && v.some(function (x) { return plArr(x); });
+        var out = [];
+        for (var i = 0; i < n; i++) {
+            var src = nested ? v[i] : v;
+            out.push(plArr(src) ? src.slice() : src ? [String(src)] : []);
+        }
+        return out;
+    }
+
+    function plClock(m) {
+        var h = Math.floor(m / 60);
+        var mm = m % 60;
+        return (h < 10 ? '0' : '') + h + ':' + (mm < 10 ? '0' : '') + mm;
+    }
+
+    function plBuild() {
+        if (pl) return;
+        pl = {};
+        pl.root = part(wf.root, '');
+        pl.root.id = 'plan';
+        var sheet = part(pl.root, 'pl-sheet');
+        var head = part(sheet, 'pl-head');
+        var left = part(head, 'pl-head-l');
+        pl.kicker = part(left, 'pl-kicker', '管理台');
+        pl.title = part(left, 'pl-title', '今日工作安排');
+        pl.sub = part(left, 'pl-sub', '');
+        var x = part(head, 'pl-close', '×');
+        x.addEventListener('click', function (e) { e.stopPropagation(); afterInput(closePlan); });
+        pl.body = part(sheet, 'pl-body');
+        pl.body.addEventListener('wheel', function (e) { e.stopPropagation(); });
+        var foot = part(sheet, 'pl-foot');
+        pl.note = part(foot, 'pl-note', '');
+        pl.copy = foot.appendChild(el('button', 'pl-btn', '下午同上午'));
+        pl.copy.type = 'button';
+        pl.copy.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (!plan || !plan.view) return;
+            for (var id in plan.choice) {
+                if (!plan.choice.hasOwnProperty(id)) continue;
+                var c = plan.choice[id];
+                for (var i = 1; i < c.length; i++) c[i] = c[0].slice();
+            }
+            plDraw();
+        });
+        pl.same = foot.appendChild(el('button', 'pl-btn', '沿用昨天'));
+        pl.same.type = 'button';
+        pl.same.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (!plan || !plan.view) return;
+            var last = plan.view.last || {};
+            var n = (plan.view.slots || []).length;
+            for (var id in last) if (last.hasOwnProperty(id)) plan.choice[id] = plSlots(last[id], n);
+            plDraw();
+        });
+        pl.skip = foot.appendChild(el('button', 'pl-btn', '先不安排'));
+        pl.skip.type = 'button';
+        pl.skip.addEventListener('click', function (e) { e.stopPropagation(); afterInput(closePlan); });
+        pl.submit = foot.appendChild(el('button', 'pl-btn primary', '确定安排'));
+        pl.submit.type = 'button';
+        pl.submit.addEventListener('click', function (e) { e.stopPropagation(); plSubmit(); });
+    }
+
+    function plMessage(text) {
+        while (pl.body.firstChild) pl.body.removeChild(pl.body.firstChild);
+        part(pl.body, 'pl-msg', text);
+    }
+
+    // Short of the skill the task asks for.
+    function plLocked(person, t) {
+        var v = plan.view;
+        return !!(t.id && v && v.skill && typeof person.level === 'number' && (t.need || 0) > person.level);
+    }
+
+    function plChip(person, si, t) {
+        var id = t.id;
+        var name = t.name;
+        var mine = (plan.choice[person.id] || [])[si] || [];
+        var at = id ? mine.indexOf(id) : -1;
+        var on = id ? at >= 0 : !mine.length;
+        var locked = plLocked(person, t);
+        // A button, as the homework options: a plain div in this engine took no clicks here.
+        var chip = el(locked ? 'div' : 'button', 'pl-chip' + (on ? ' on' : '') + (id ? ' tier' + (t.tier || 0) : ' free') + (locked ? ' locked' : ''));
+        if (!locked) chip.type = 'button';
+        if (locked) {
+            chip.appendChild(document.createTextNode(name));
+            part(chip, 'pl-chip-need', '需' + t.need + '级');
+            return chip;
+        }
+        // Picked in this order: the number says which.
+        if (id && on && mine.length > 1) part(chip, 'pl-chip-n', String(at + 1));
+        chip.appendChild(document.createTextNode(name));
+        chip.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var all = plan.choice[person.id] || [];
+            var now = (all[si] || []).slice();
+            if (!id) now = [];
+            else if (now.indexOf(id) >= 0) now.splice(now.indexOf(id), 1);
+            else now.push(id);
+            all[si] = now;
+            plan.choice[person.id] = all;
+            // Redrawn once the click is handled: the chip clicked is replaced by the redraw.
+            setTimeout(plDraw, 0);
+        });
+        return chip;
+    }
+
+    function plDraw() {
+        if (!plan || !plan.view) return;
+        var v = plan.view;
+        var slots = v.slots || [];
+        var scroll = pl.body.scrollTop;
+        pl.kicker.textContent = (v.company || '公司') + ' · 管理台';
+        pl.sub.textContent = '第 ' + v.day + ' 天 · ' + slots.map(function (s) { return (s.label || '') + ' ' + plClock(s.from) + '–' + plClock(s.to); }).join('　') +
+            ' · 安排的工作会替换游戏随机给的「工作」任务';
+        while (pl.body.firstChild) pl.body.removeChild(pl.body.firstChild);
+        var tasks = [{ id: '', name: '自由安排' }].concat(v.tasks || []);
+        var given = 0;
+        // The tiers: what each asks of the company skill, and what finishing one adds to the project.
+        if (v.tiers && v.tiers.length) {
+            var legend = part(pl.body, 'pl-legend');
+            part(legend, 'pl-legend-title', v.skill ? '按「' + v.skill.name + '」技能分级' : '任务分级');
+            v.tiers.forEach(function (t, i) {
+                var item = part(legend, 'pl-legend-item');
+                part(item, 'pl-dot tier' + i);
+                part(item, 'pl-legend-name', t.name);
+                part(item, 'pl-legend-text', (t.need ? (v.skill ? v.skill.name : '技能') + ' ' + t.need + ' 级以上' : '不限技能') + ' · 每完成一次项目 +' + t.bonus);
+            });
+        }
+        (v.people || []).forEach(function (p) {
+            var mine = plan.choice[p.id] || [];
+            if (mine.some(function (l) { return l && l.length; })) given++;
+            var row = part(pl.body, 'pl-row' + (p.me ? ' me' : ''));
+            var who = part(row, 'pl-who');
+            part(who, 'pl-face', (p.name || '?').slice(-1));
+            var nm = part(who, 'pl-name-box');
+            part(nm, 'pl-name', p.name + (p.me ? '（我）' : ''));
+            part(nm, 'pl-rank', p.rankName || '');
+            var sk = part(nm, 'pl-skills');
+            if (v.skill && typeof p.level === 'number') part(sk, 'pl-skill key', v.skill.name + ' ' + p.level + ' 级');
+            (p.skills || []).forEach(function (s) { if (!v.skill || s.name !== v.skill.name) part(sk, 'pl-skill', s.name + ' ' + s.level); });
+            if (!(p.skills || []).length) part(sk, 'pl-skill none', '还没有练过的技能');
+            var pick = part(row, 'pl-tasks');
+            slots.forEach(function (s, si) {
+                var block = part(pick, 'pl-slot');
+                var head = part(block, 'pl-slot-head');
+                part(head, 'pl-slot-label', s.label || ('时段 ' + (si + 1)));
+                part(head, 'pl-slot-time', plClock(s.from) + '–' + plClock(s.to));
+                var n = (mine[si] || []).length;
+                part(head, 'pl-slot-n', n > 1 ? n + ' 项轮流做' : n === 1 ? '1 项' : '');
+                var line = part(block, 'pl-chip-row');
+                tasks.forEach(function (t) { line.appendChild(plChip(p, si, t)); });
+            });
+            if (p.me) part(pick, 'pl-me-note', '你自己的任务：你在操作时不会被打断，空下来时会自动去做。');
+        });
+        pl.note.textContent = given ? '已给 ' + given + ' 人安排了任务。可以多选，多项会轮流做，哪项做得少就先做哪项。' : '还没给任何人安排任务：不安排就由游戏随机分配。';
+        pl.same.style.display = v.last && Object.keys(v.last).length ? '' : 'none';
+        pl.copy.style.display = slots.length > 1 ? '' : 'none';
+        pl.body.scrollTop = scroll;
+    }
+
+    function plPoll() {
+        if (!plan) return;
+        var p = plan;
+        cli('uimod.cfg_load', { mod_id: MOD, section: 'ui/focus/plan', key: p.player }).then(function (r) {
+            if (plan !== p) return;
+            var v = null;
+            try { v = r && typeof r.value === 'string' && r.value ? JSON.parse(r.value) : null; } catch (e) { v = null; }
+            if (v && (!p.view || v.seq !== p.view.seq)) {
+                p.view = v;
+                p.choice = {};
+                var n = (v.slots || []).length;
+                (v.people || []).forEach(function (x) { p.choice[x.id] = plSlots(x.slots !== undefined ? x.slots : x.tasks, n); });
+                plDraw();
+            }
+            p.timer = setTimeout(plPoll, PLAN_POLL_MS);
+        }, function () { if (plan === p) p.timer = setTimeout(plPoll, PLAN_POLL_MS); });
+    }
+
+    function plSubmit() {
+        if (!plan || !plan.view) return;
+        var p = plan;
+        save('ui/focus/plan', 'answer', { seq: Date.now(), player: p.player, day: p.view.day, assign: p.choice }).then(function () {
+            afterInput(closePlan);
+        }, function () { pl.note.textContent = '没保存上，再点一次。'; });
+    }
+
+    function openPlan(player) {
+        if (plan && plan.player === player) return;
+        hide();
+        plBuild();
+        var st = wf.root.style;
+        plan = { player: player, cls: wf.root.className, geo: { left: st.left, top: st.top, width: st.width, height: st.height }, view: null, choice: {}, timer: null };
+        wf.root.className = (plan.cls ? plan.cls + ' ' : '') + 'plan';
+        st.left = PLAN_RECT.left + 'px';
+        st.top = PLAN_RECT.top + 'px';
+        st.width = PLAN_RECT.width + 'px';
+        st.height = PLAN_RECT.height + 'px';
+        setIdle(false);
+        plMessage('正在读取今天的人员和任务……');
+        plPoll();
+    }
+
+    function closePlan() {
+        if (!plan) return;
+        var p = plan;
+        plan = null;
+        if (p.timer) clearTimeout(p.timer);
+        var st = wf.root.style;
+        wf.root.className = p.cls;
+        st.left = p.geo.left;
+        st.top = p.geo.top;
+        st.width = p.geo.width;
+        st.height = p.geo.height;
+        setIdle(true);
+    }
+
     function setState(text, err) {
         state.textContent = text || '';
         state.className = err ? 'err' : '';
@@ -1224,6 +1462,7 @@ focusNote('loaded');
     }
 
     function hide() {
+        closePlan();
         closeHomework();
         closeReview();
         closeTalk();
@@ -1453,7 +1692,9 @@ focusNote('loaded');
                 var player = String(q.player || '');
                 var target = String(q.target || '');
                 focusNote('request ' + q.op + ' ' + player + '-' + target);
-                if (q.op === 'homework' && /^\d+$/.test(player)) {
+                if (q.op === 'plan' && /^\d+$/.test(player)) {
+                    openPlan(player);
+                } else if (q.op === 'homework' && /^\d+$/.test(player)) {
                     openHomework(player, 0);
                 } else if (q.op === 'open' && /^\d+$/.test(player) && /^\d+$/.test(target)) {
                     openTalk(player, target, q.title || '');
@@ -1474,7 +1715,7 @@ focusNote('loaded');
         // focus_boot (game_mode, the play views) keeps this page loaded in a save, so that a talk
         // the service opens (a lesson) finds it running: with no talk open the box stays away.
         if (t && t.triggerId === 'focus_boot') {
-            if (!talk && !review && !homework) setIdle(true);
+            if (!talk && !review && !homework && !plan) setIdle(true);
             return;
         }
         // 写作业: the played student sits down to the day's homework, whoever the menu was opened on.

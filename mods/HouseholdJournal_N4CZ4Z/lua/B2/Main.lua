@@ -28,7 +28,7 @@
 
 local TAG = "[HouseholdJournal] "
 -- beat: Zoi.MealServer prints a W line every 30 s while the B2 bindings are registered.
-local FEATURES = "give|events|freelance|beat|age|career|mission|visit"
+local FEATURES = "give|events|freelance|beat|age|career|mission|visit|teampoint"
 local HEARTBEAT_S = 30
 local MEMBERS_EVERY_S = 60
 -- How long after this script starts an empty household is asked about every few seconds.

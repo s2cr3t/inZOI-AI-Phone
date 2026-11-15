@@ -136,7 +136,7 @@
     ];
     // The installed apps in order, kept by the app registry (registerApp, appsRebuild).
     var APPS = [];
-    var TITLES = { family: 'Family', bonds: 'Bonds', oa: 'OA', time: 'Time', jobs: 'Jobs', freelance: 'Freelance', texts: 'Texts', messages: 'Messages', chat: 'Chat', persona: 'Persona', moments: 'Moments', ai: 'AI', settings: 'Settings', sounds: 'Sounds', wallpaper: 'Wallpaper', study: '雅思学习', scexam: '雅思考试', booklet: '成长册', bookread: '成长册' };
+    var TITLES = { family: 'My Home', bonds: 'Bonds', oa: 'OA', time: 'Time', jobs: 'Jobs', freelance: 'Freelance', texts: 'Texts', messages: 'Messages', chat: 'Chat', persona: 'Persona', moments: 'Moments', ai: 'AI', settings: 'Settings', sounds: 'Sounds', wallpaper: 'Wallpaper', study: '雅思学习', scexam: '雅思考试', booklet: '成长册', bookread: '成长册' };
     // Mailbox on disk, one folder per conversation:
     //   <mod>/ui/phone/sms/<playerId>-<contactId>/{outbox,inbox,seen,status}.cfg
     // The phone writes outbox (the person you are playing) and seen. The contact's replies go
@@ -441,10 +441,10 @@
 
     function greeting(env) {
         var h = env && typeof env.hour === 'number' ? env.hour : 12;
-        if (h >= 5 && h < 12) return 'Good morning';
-        if (h >= 12 && h < 18) return 'Good afternoon';
-        if (h >= 18 && h < 23) return 'Good evening';
-        return 'Good night';
+        if (h >= 5 && h < 12) return L('Good morning');
+        if (h >= 12 && h < 18) return L('Good afternoon');
+        if (h >= 18 && h < 23) return L('Good evening');
+        return L('Good night');
     }
 
     function inWindow(now, start, end) {
@@ -725,6 +725,403 @@
                 refresh();
             }, 0);
         }, 0);
+    }
+
+    // ------------------------------------------------------------------
+    // Language: the phone's own words in the language picked in Settings > Language
+    // ------------------------------------------------------------------
+    // Every text the phone draws goes through L(): L('Settings') is '设置' with the phone in Chinese
+    // and 'Settings' in English. The key is the text as the code writes it, in whichever language
+    // it was written; LANG_TEXT gives it in the other. A text with no entry is shown as written,
+    // so a page not translated yet still works, and pages can be done one at a time: wrap the
+    // page's texts in L() and add their entries here.
+    //   L('{n} removed.', { n: name })   fills {n} after translating
+    // Saved in ui/phone/saved/lang.cfg as { lang: 'zh' | 'en' }; until it is set the phone keeps
+    // the words it has always shown (English for the system apps).
+    var LANGS = [
+        { id: 'zh', name: '中文', note: '手机的界面文字用中文显示。' },
+        { id: 'en', name: 'English', note: 'The phone shows its own words in English.' }
+    ];
+    var LANG_DEFAULT = 'en';
+    var phoneLang = LANG_DEFAULT;
+
+    // text as written -> { zh, en }; the side the text is already in may be left out.
+    var LANG_TEXT = {
+        // The shell: back buttons, values.
+        '< Back': { zh: '< 返回' },
+        'Off': { zh: '关' },
+        '关': { en: 'Off' },
+        'On': { zh: '开' },
+        // App names (registerApp labels) and page titles (TITLES).
+        'Family': { zh: '家人' },
+        'My Home': { zh: '我的家' },
+        'The floor plan of your home': { zh: '家的户型图' },
+        'See your home from above': { zh: '从上往下看你的家' },
+        'Your home drawn from the game, storey by storey: the walls, every room by name, the furniture, doors and windows, and where everyone at home is right now.': {
+            zh: '照着游戏画出的家，一层一层：墙、每个房间的名字、家具、门窗，还有家里每个人此刻在哪。' },
+        'Your home is drawn the next time you are there.': { zh: '下次回到家里时，会自动画出户型图。' },
+        '{n} storeys · {r} rooms': { zh: '{n} 层 · {r} 个房间' },
+        'away from home': { zh: '不在家' },
+        'Floor {n}': { zh: '{n}楼' },
+        'Drawn from the game while you are at home.': { zh: '在家时照着游戏实时画出。' },
+        'Away from home: this is how it looked the last time you were there.': { zh: '现在不在家，显示的是上次在家时的样子。' },
+        'Bonds': { zh: '关系' },
+        'OA': { zh: '办公' },
+        'Time': { zh: '时间' },
+        'Jobs': { zh: '招聘' },
+        'Freelance': { zh: '接单' },
+        'News': { zh: '新闻' },
+        'Texts': { zh: '短信' },
+        'Chat': { zh: '聊天' },
+        'Stories': { zh: '故事' },
+        'Story': { zh: '故事' },
+        'Contacts': { zh: '通讯录' },
+        'Contact': { zh: '联系人' },
+        'Messages': { zh: '信息' },
+        'Moments': { zh: '朋友圈' },
+        'Persona': { zh: '人设' },
+        'Dream Car': { zh: '梦想座驾' },
+        'Garage': { zh: '车库' },
+        'Vehicle': { zh: '车辆' },
+        'AI': { zh: 'AI' },
+        'Settings': { zh: '设置' },
+        'Sounds': { zh: '声音' },
+        'Wallpaper': { zh: '墙纸' },
+        'Language': { zh: '语言' },
+        'App Store': { zh: '应用商店' },
+        'App': { zh: '应用' },
+        'Group': { zh: '群聊' },
+        'Group Name': { zh: '群名称' },
+        'New Group': { zh: '发起群聊' },
+        'Members': { zh: '群成员' },
+        '成绩': { en: 'Grades' },
+        '成长册': { en: 'Booklets' },
+        '雅思学习': { en: 'IELTS Study' },
+        '雅思考试': { en: 'IELTS Exam' },
+        '纪念与信任': { en: 'Memories & Trust' },
+        '发起申请': { en: 'New Request' },
+        '组织架构': { en: 'Organization' },
+        '薪酬职级': { en: 'Pay & Rank' },
+        '聊天分组': { en: 'Chat Groups' },
+        // Home screen.
+        'Remove “{app}”?': { zh: '移除“{app}”？' },
+        '{app} removed. Get it again in the App Store.': { zh: '已移除{app}，可以在应用商店里重新获取。' },
+        // Days, seasons and weather as the game names them.
+        'Monday': { zh: '星期一' }, 'Tuesday': { zh: '星期二' }, 'Wednesday': { zh: '星期三' }, 'Thursday': { zh: '星期四' },
+        'Friday': { zh: '星期五' }, 'Saturday': { zh: '星期六' }, 'Sunday': { zh: '星期日' },
+        'Spring': { zh: '春' }, 'Summer': { zh: '夏' }, 'Fall': { zh: '秋' }, 'Autumn': { zh: '秋' }, 'Winter': { zh: '冬' },
+        'Sunny': { zh: '晴' }, 'Cloudy': { zh: '多云' }, 'Rain': { zh: '雨' }, 'Snow': { zh: '雪' }, 'Fog': { zh: '雾' }, 'Storm': { zh: '暴风雨' },
+        // Home screen.
+        'Good morning': { zh: '早上好' }, 'Good afternoon': { zh: '下午好' }, 'Good evening': { zh: '晚上好' }, 'Good night': { zh: '夜深了' },
+        'Today': { zh: '今天' },
+        'NOW PLAYING': { zh: '当前角色' },
+        'Needs unavailable': { zh: '读不到需求' },
+        'Done': { zh: '完成' },
+        'Cancel': { zh: '取消' },
+        'Delete App': { zh: '删除应用' },
+        'It leaves the Home Screen. Get it again from the App Store any time; what it saved stays on the phone.': {
+            zh: '它会从主屏幕上移除。随时可以在应用商店里重新获取，它存下的内容会留在手机里。'
+        },
+        'AI Phone Service is not running': { zh: 'AI 手机服务没有运行' },
+        'Finish setting up AI Phone': { zh: '完成 AI 手机设置' },
+        '点这里查看怎么启动': { en: 'Tap here to see how to start it.' },
+        '还差一步：安装 AI 手机服务，点这里查看': { en: 'One step left: install AI Phone Service. Tap here to see how.' },
+        // Texts: the list.
+        'Nobody to text yet. Open Contacts and tap Message on someone.': { zh: '还没有可以发短信的人。打开通讯录，点某个人的“发消息”。' },
+        'No messages yet': { zh: '还没有消息' },
+        'You: ': { zh: '我：' },
+        'Photo': { zh: '[图片]' },
+        'Photo: {text}': { zh: '[图片] {text}' },
+        '[语音]': { en: '[Voice]' },
+        'New group': { zh: '发起群聊' },
+        'Groups: {why}': { zh: '群聊：{why}' },
+        '全部': { en: 'All' },
+        '未分组': { en: 'Unsorted' },
+        '管理': { en: 'Manage' },
+        '+ 分组': { en: '+ Folder' },
+        '删除': { en: 'Delete' },
+        '添加': { en: 'Add' },
+        '分组暂时存不进去，稍后再改一次。': { en: 'Folders could not be saved just now. Try again in a moment.' },
+        '还没有分组。可以自己建，也可以一键按家人、同学、工作、朋友分好。': { en: 'No folders yet. Make your own, or sort chats into family, classmates, work and friends in one tap.' },
+        '先写分组名称。': { en: 'Name the folder first.' },
+        '已经有叫「{name}」的分组了。': { en: 'There is already a folder called “{name}”.' },
+        '还没有聊天。': { en: 'No chats yet.' },
+        '这个分组里还没有聊天。点「管理」把聊天放进来。': { en: 'No chats in this folder yet. Tap Manage to add some.' },
+        '想加你为好友': { en: 'wants to add you as a friend' },
+        'Could not clear texts. Is the reply service running?': { zh: '清不掉短信。回复服务在运行吗？' },
+        'Texts cleared.': { zh: '短信已清空。' },
+        'Clearing...': { zh: '正在清空…' },
+        'Clearing all texts...': { zh: '正在清空所有短信…' },
+        'Clear all texts and group chats?': { zh: '清空所有短信和群聊？' },
+        'Clear': { zh: '清空' },
+        // Texts: a chat.
+        'This person can no longer be texted.': { zh: '已经不能给这个人发短信了。' },
+        'Edit how {name} talks': { zh: '编辑{name}的说话方式' },
+        'No messages yet. Say hi to {name}.': { zh: '还没有消息，跟{name}打个招呼吧。' },
+        '正在载入对话…': { en: 'Loading the chat…' },
+        '查看更早的消息（{n}）': { en: 'Earlier messages ({n})' },
+        '查看 \u203A': { en: 'View \u203A' },
+        '好像有心事': { en: 'Something on their mind' },
+        '好像有心事 · 这两天就有结果': { en: 'Something on their mind · settles in a day or two' },
+        'Online': { zh: '在线' },
+        'Offline': { zh: '离线' },
+        'Typing...': { zh: '正在输入…' },
+        'Reading...': { zh: '正在看消息…' },
+        'Connecting...': { zh: '正在连接…' },
+        'Auto replies off': { zh: '自动回复已关闭' },
+        'Reply service error': { zh: '回复服务出错' },
+        'Read': { zh: '已读' },
+        'Delivered': { zh: '已送达' },
+        'Sent': { zh: '已发送' },
+        'Today {t}': { zh: '今天 {t}' },
+        'Yesterday {t}': { zh: '昨天 {t}' },
+        'Day {d} {t}': { zh: '第 {d} 天 {t}' },
+        'Message': { zh: '发消息' },
+        'Send': { zh: '发送' },
+        'Emoji': { zh: '表情' },
+        'Latest': { zh: '最新消息' },
+        'Keep it under {n} characters.': { zh: '最多 {n} 个字。' },
+        'Add photo': { zh: '添加图片' },
+        'Choosing a photo on the PC': { zh: '正在电脑上选图片' },
+        'Choose a photo on your PC. If covered by the game, press Alt+Tab.': { zh: '在电脑上选一张图片。如果被游戏挡住了，按 Alt+Tab。' },
+        'Photo ready': { zh: '图片已选好' },
+        'Remove photo': { zh: '去掉图片' },
+        'Photo unavailable': { zh: '图片不见了' },
+        'Finish choosing the photo on the PC first.': { zh: '先在电脑上选完图片。' },
+        'Another phone service request is still running. Try again in a moment.': { zh: '手机服务还在处理上一个请求，稍等一下再试。' },
+        'Adding photos needs AI Phone Service running on this PC.': { zh: '发图片需要这台电脑上的 AI 手机服务在运行。' },
+        'Could not open the photo picker: {why}': { zh: '打不开选图窗口：{why}' },
+        'Could not reach AI Phone Service: {why}': { zh: '连不上 AI 手机服务：{why}' },
+        'No answer from AI Phone Service. Check that it is running on this PC.': { zh: 'AI 手机服务没有回应，看看它是否在这台电脑上运行。' },
+        // Texts: group chats (10-groups.js).
+        '{n} people': { zh: '{n} 人' },
+        '{name} is typing…': { zh: '{name} 正在输入…' },
+        'Someone': { zh: '有人' },
+        'You': { zh: '我' },
+        'Reply': { zh: '回复' },
+        'Group name': { zh: '群名称' },
+        'Group name (optional)': { zh: '群名称（可不填）' },
+        '{n} chosen': { zh: '已选 {n} 人' },
+        'Choose two or more people': { zh: '选两个或更多人' },
+        'Choose two or more people.': { zh: '请选两个或更多人。' },
+        'Up to {n} people in one group.': { zh: '一个群最多 {n} 人。' },
+        'Create': { zh: '创建' },
+        'Save': { zh: '保存' },
+        'This group is gone.': { zh: '这个群已经没有了。' },
+        'No messages yet. Say something.': { zh: '还没有消息，说点什么吧。' },
+        'Group settings': { zh: '群设置' },
+        'Mention someone': { zh: '@某人' },
+        'The name cannot be empty.': { zh: '群名称不能为空。' },
+        'Creator': { zh: '群主' },
+        '班长': { en: 'Monitor' },
+        '群主': { en: 'Owner' },
+        'Remove from group': { zh: '移出群聊' },
+        'Add people': { zh: '添加成员' },
+        'Everyone in the house is already in.': { zh: '家里的人都已经在群里了。' },
+        '班级群：同班同学自动加入，群主是班长；在读期间不能退群，毕业后群会解散。': { en: 'Class chat: classmates join on their own and the class monitor owns it. You cannot leave while at school; it closes after graduation.' },
+        '公司工作群：入职自动加入，群主是公司职位最高的人；在职期间不能退群，离职后自动退出。': { en: 'Work chat: you join when you start the job, and the most senior person owns it. You cannot leave while employed; you leave it when you quit.' },
+        'Disband group': { zh: '解散群聊' },
+        'Leave group': { zh: '退出群聊' },
+        'Disband Group': { zh: '解散群聊' },
+        'Leave Group': { zh: '退出群聊' },
+        'Manage Members': { zh: '管理成员' },
+        // Texts: voice input (23-voice.js).
+        'Voice input': { zh: '语音输入' },
+        'Listening... tap ■ when done': { zh: '正在听…说完点 ■' },
+        'Listening... release {key}': { zh: '正在听…说完松开 {key}' },
+        'Working out what you said...': { zh: '正在识别…' },
+        'Sending in {n} · press any key to edit': { zh: '{n} 秒后发送 · 按任意键修改' },
+        'Voice input is not running': { zh: '语音输入没有运行' },
+        'Voice input did not work': { zh: '语音输入没成功' },
+        'No microphone found': { zh: '没找到麦克风' },
+        "Didn't catch that, say it again": { zh: '没听清，再说一遍' },
+        // Persona page (11-persona.js).
+        'Saved. The next reply uses it.': { zh: '已保存，下一次回复就会用上。' },
+        'HOW {name} TALKS TO YOU': { zh: '{name}跟你说话的方式' },
+        'Tone, words they use, how they react when scolded...': { zh: '语气、常用的词、被说了会怎么反应……' },
+        'Use default': { zh: '恢复默认' },
+        'Only with the person you are playing now. Leave it empty for no set style.': { zh: '只对你现在扮演的这个人生效。留空就不设定说话方式。' },
+        'There is no built-in style for this relationship. Anything you write here is used as is.': { zh: '这种关系没有内置的说话方式，这里写什么就用什么。' },
+        'The reply service has not shared the built-in style yet. Start it, then come back.': { zh: '回复服务还没有提供内置的说话方式。先启动它，再回来看。' },
+        'ABOUT {name}': { zh: '关于{name}' },
+        'Background, habits, secrets, what they care about...': { zh: '背景、习惯、秘密、在意的事……' },
+        'Used in every chat with {name}, and in Moments.': { zh: '和{name}的每次聊天、以及朋友圈里都会用到。' },
+        'This changes who {name} is and how they talk. What they can do in the game, and how replies are written, stay the same.': { zh: '这里改的是{name}是什么样的人、怎么说话。在游戏里能做什么、回复的写法不会变。' },
+        // AI app (14-ai-service.js).
+        "Custom": { zh: "自定义" },
+        "AI PHONE SERVICE": { zh: "AI 手机服务" },
+        "DOWNLOAD AGAIN": { zh: "重新下载" },
+        "GET AI PHONE SERVICE": { zh: "获取 AI 手机服务" },
+        "THEN": { zh: "然后" },
+        "USAGE": { zh: "用量" },
+        "SUPPORT": { zh: "支持" },
+        "PROVIDER": { zh: "AI 服务商" },
+        "API KEY": { zh: "API 密钥" },
+        "SERVER ADDRESS": { zh: "服务器地址" },
+        "MODEL": { zh: "模型" },
+        "DEEP THINKING": { zh: "深度思考" },
+        "Low": { zh: "低" },
+        "High": { zh: "高" },
+        "Max": { zh: "最高" },
+        "Copy link": { zh: "复制链接" },
+        "Copying...": { zh: "正在复制…" },
+        "Open \"inZOI AI Phone\" from the Windows Start menu, then try again. Only the reply service is running on this PC.": { zh: "请从 Windows 开始菜单打开“inZOI AI 手机”后再试。这台电脑上现在只有回复服务在运行。" },
+        "Done.": { zh: "完成。" },
+        "That did not work.": { zh: "没有成功。" },
+        "Saved.": { zh: "已保存。" },
+        "AI Phone Service did not pick up the change. Check that it is running on this PC.": { zh: "AI 手机服务没有收到这次修改，看看它是否在这台电脑上运行。" },
+        "Pick a provider.": { zh: "请选择 AI 服务商。" },
+        "That model name has characters a model name cannot have.": { zh: "模型名称里有不允许的字符。" },
+        "Enter or pick a model.": { zh: "请输入或选择一个模型。" },
+        "Enter the address of the server, starting with https://": { zh: "请输入服务器地址，以 https:// 开头" },
+        "Could not save: {why}": { zh: "保存失败：{why}" },
+        "Could not switch: {why}": { zh: "切换失败：{why}" },
+        "Could not send: {why}": { zh: "发送失败：{why}" },
+        "Finish choosing the wallpaper picture on the PC first.": { zh: "先在电脑上选完墙纸图片。" },
+        "Finish choosing the Texts photo on the PC first.": { zh: "先在电脑上选完短信里的图片。" },
+        "Type or paste the key first.": { zh: "请先输入或粘贴密钥。" },
+        "Running": { zh: "运行中" },
+        "Running, last reply failed": { zh: "运行中，上一次回复失败" },
+        "Texts and Moments are answered by {who}.": { zh: "短信和朋友圈由 {who} 回复。" },
+        "Starting...": { zh: "正在启动…" },
+        "Needs an API key": { zh: "需要 API 密钥" },
+        "Characters do not answer texts while AI is off.": { zh: "AI 关闭时，角色不会回复短信。" },
+        "Cannot reach the game": { zh: "连不上游戏" },
+        "Stopped": { zh: "已停止" },
+        "Problem": { zh: "出了问题" },
+        "Saving...": { zh: "正在保存…" },
+        "Checking the key with the provider...": { zh: "正在向服务商验证密钥…" },
+        "Asking the provider for its models...": { zh: "正在向服务商获取模型列表…" },
+        "Testing the connection...": { zh: "正在测试连接…" },
+        "Collecting logs and settings...": { zh: "正在收集日志和设置…" },
+        "Working...": { zh: "处理中…" },
+        "{n} of {limit} AI calls": { zh: "{n} / {limit} 次 AI 调用" },
+        "{n} AI calls": { zh: "{n} 次 AI 调用" },
+        "in the last 60 minutes": { zh: "最近 60 分钟" },
+        "in the last 60 minutes, about {cost}": { zh: "最近 60 分钟，约 {cost}" },
+        "{n} of them failed. Failed calls are not billed.": { zh: "其中 {n} 次失败，失败的调用不计费。" },
+        "The hourly cap is reached. Characters wait before they answer again.": { zh: "已达到每小时上限，角色要等一会儿才会再回复。" },
+        "Close to the hourly cap. When it is reached, characters wait before they answer again.": { zh: "快到每小时上限了。到达后角色要等一会儿才会再回复。" },
+        "Today: {n} calls": { zh: "今天：{n} 次调用" },
+        "Today: {n} calls, about {cost}": { zh: "今天：{n} 次调用，约 {cost}" },
+        "Everything else": { zh: "其他" },
+        "Tokens in the last 60 minutes: {sent} sent ({cached} from cache), {got} received.": { zh: "最近 60 分钟的 token：发送 {sent}（其中缓存 {cached}），接收 {got}。" },
+        "No price is known for this model, so only calls and tokens are shown. To see a cost, add \"price\" under \"llm\" in config.json, for example \"price\": {\"input\": 2, \"cached\": 0.5, \"output\": 8, \"currency\": \"CNY\"} (per million tokens).": { zh: "不知道这个模型的价格，所以只显示调用次数和 token。想看费用，在 config.json 的 \"llm\" 下加 \"price\"，例如 \"price\": {\"input\": 2, \"cached\": 0.5, \"output\": 8, \"currency\": \"CNY\"}（每百万 token）。" },
+        "Cost uses the prices set in config.json. It is an estimate; the bill on the provider’s website is the real figure.": { zh: "费用按 config.json 里设定的价格估算，以服务商网站上的账单为准。" },
+        "Cost uses DeepSeek’s published prices, peak hours now (full price). It is an estimate; the bill on the provider’s website is the real figure.": { zh: "费用按 DeepSeek 公布的价格估算，现在是高峰时段（原价）。以服务商网站上的账单为准。" },
+        "Cost uses DeepSeek’s published prices, off-peak now (half price). It is an estimate; the bill on the provider’s website is the real figure.": { zh: "费用按 DeepSeek 公布的价格估算，现在是低峰时段（半价）。以服务商网站上的账单为准。" },
+        "Cost uses DeepSeek’s published prices. It is an estimate; the bill on the provider’s website is the real figure.": { zh: "费用按 DeepSeek 公布的价格估算，以服务商网站上的账单为准。" },
+        "{n} call(s) came back without token counts and are not in the cost.": { zh: "有 {n} 次调用没有返回 token 数，未计入费用。" },
+        "Replies to texts": { zh: "回复短信" },
+        "Mood and needs after a chat": { zh: "聊天后的心情和需求" },
+        "Mood after a chat": { zh: "聊天后的心情" },
+        "Needs after a chat": { zh: "聊天后的需求" },
+        "Choosing a moodlet": { zh: "选择心情状态" },
+        "Is it still the asked task": { zh: "判断是否还是那件事" },
+        "Finding the right object": { zh: "找合适的物品" },
+        "Choosing the action": { zh: "选择动作" },
+        "Checking the action": { zh: "检查动作" },
+        "Checking a promise": { zh: "核对约定" },
+        "Fixing an action plan": { zh: "修正动作计划" },
+        "Memory summary": { zh: "整理记忆" },
+        "Texts about a setback": { zh: "没做成时的短信" },
+        "Texts they start": { zh: "主动发的短信" },
+        "Moments posts": { zh: "朋友圈发帖" },
+        "Moments likes and comments": { zh: "朋友圈点赞和评论" },
+        "Moments replies": { zh: "朋友圈回复" },
+        "Other": { zh: "其他" },
+        "Export diagnostics": { zh: "导出诊断包" },
+        "Saves the recent logs and settings as one zip file in Documents\\inZOI\\AI Phone Diagnostics. API keys are removed from it. The chat messages stay in, so the problem can be traced. Send the zip together with what happened and roughly when.": { zh: "把最近的日志和设置打包成一个 zip，存在 文档\\inZOI\\AI Phone Diagnostics。里面会去掉 API 密钥，但保留聊天内容以便排查。发送时请一起说明发生了什么、大概什么时候。" },
+        "A green dot means a key is saved for that provider.": { zh: "绿点表示这个服务商已经保存了密钥。" },
+        "Saved: {hint}": { zh: "已保存：{hint}" },
+        "yes": { zh: "是" },
+        "No key saved for {who}.": { zh: "还没有保存 {who} 的密钥。" },
+        "Paste key": { zh: "粘贴密钥" },
+        "Tap to confirm": { zh: "再点一次确认" },
+        "Remove key": { zh: "删除密钥" },
+        "Or type the key here": { zh: "或在这里输入密钥" },
+        "Create a key at {site} and copy it. ": { zh: "在 {site} 创建一个密钥并复制。" },
+        "Paste key reads the key from the Windows clipboard. It is checked with the provider, then stored encrypted on this PC and never shown again.": { zh: "“粘贴密钥”会读取 Windows 剪贴板里的密钥，先向服务商验证，再加密保存在这台电脑上，之后不会再显示。" },
+        "Any server that speaks the OpenAI chat completions protocol. http:// is allowed only for a server on this PC.": { zh: "任何支持 OpenAI chat completions 协议的服务器。只有这台电脑上的服务器可以用 http://。" },
+        "Showing {n} of {all} models. Type any other name below.": { zh: "显示了 {all} 个模型中的 {n} 个，其他模型可以在下面直接输入名称。" },
+        "Model name": { zh: "模型名称" },
+        "Fetch list": { zh: "获取列表" },
+        "Fetch list asks the provider which models your key can use.": { zh: "“获取列表”会向服务商查询你的密钥能用哪些模型。" },
+        "Off answers fastest and costs least. Higher levels think longer before each reply and use more of your credit. Models that cannot switch it off use the lowest level they allow.": { zh: "关闭时回复最快、最省钱。级别越高，每次回复前想得越久，花费也越多。不能关闭思考的模型会用它允许的最低级别。" },
+        "Test connection": { zh: "测试连接" },
+        "AI Phone Service": { zh: "AI 手机服务" },
+        " (development copy)": { zh: "（开发版）" },
+        // Moments.
+        'New post': { zh: '新动态' },
+        'Share': { zh: '发布' },
+        'Post': { zh: '发送' },
+        'Your story': { zh: '你的动态' },
+        'Add a photo': { zh: '添加照片' },
+        'That photo could not be added.': { zh: '这张照片加不上。' },
+        'Write a caption…': { zh: '写点什么…' },
+        'Add location (optional)': { zh: '添加位置（可不填）' },
+        'Friends who know you can see this.': { zh: '认识你的朋友都能看到。' },
+        'Replying to {name}': { zh: '回复 {name}' },
+        'Write a reply…': { zh: '写回复…' },
+        'Add a comment…': { zh: '添加评论…' },
+        'Sending': { zh: '发送中' },
+        'Like': { zh: '赞' },
+        'Unlike': { zh: '取消赞' },
+        'Comment': { zh: '评论' },
+        '、': { en: ', ' },
+        'Liked by {names}': { zh: '{names} 赞了' },
+        'Liked by {names} and {n} others': { zh: '{names} 等 {n} 人赞了' },
+        'View all {n} comments': { zh: '查看全部 {n} 条评论' },
+        'Delete post': { zh: '删除动态' },
+        'Tap again to delete': { zh: '再点一次删除' },
+        'Previous': { zh: '上一条' },
+        'Next': { zh: '下一条' },
+        'No moments yet': { zh: '还没有动态' },
+        'Posts from people you know will show up here.': { zh: '认识的人发的动态会出现在这里。' },
+        'Moments appear once the reply service has seen this character.': { zh: '回复服务认识这个角色后，朋友圈就会出现。' },
+        'Reply service offline: friends cannot post or answer right now.': { zh: '回复服务离线：朋友们现在不能发动态或回复。' },
+        'Paused': { zh: '已暂停' },
+        // Moments splash.
+        'Back': { zh: '返回' },
+        'Catching up with friends': { zh: '正在刷新朋友圈' },
+        // Settings > Language.
+        'The phone’s own words. What your family texts you stays in the language they write in.': {
+            zh: '这里改的是手机自己的界面文字。家人发来的消息还是他们原本说的语言。'
+        }
+    };
+
+    function L(text, vars) {
+        var s = String(text == null ? '' : text);
+        var e = LANG_TEXT[s];
+        var out = e && e[phoneLang] ? e[phoneLang] : s;
+        if (vars) {
+            out = out.replace(/\{(\w+)\}/g, function (all, k) {
+                return Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : all;
+            });
+        }
+        return out;
+    }
+
+    function langOf(id) {
+        for (var i = 0; i < LANGS.length; i++) if (LANGS[i].id === id) return LANGS[i];
+        return null;
+    }
+
+    function langLoad() {
+        return cfgValue('ui/phone/saved', 'lang').then(function (v) {
+            var id = v && typeof v === 'object' ? v.lang : null;
+            if (langOf(id)) phoneLang = id;
+            return phoneLang;
+        }, function () { return phoneLang; });
+    }
+
+    // Picked in Settings > Language: saved, and the page drawn again in place in the new words.
+    // The home screen and every other page take it the next time they are drawn.
+    function langSet(id) {
+        if (!langOf(id) || id === phoneLang) return;
+        phoneLang = id;
+        soft(call('uimod.cfg_save', { mod_id: SMS_MOD, section: 'ui/phone/saved', key: 'lang', value: JSON.stringify({ lang: id }) }));
+        settingsRedraw();
     }
 
     // ------------------------------------------------------------------
@@ -1149,7 +1546,7 @@
 
     function card(label) {
         var c = node('div', 'ph-card');
-        if (label) c.appendChild(node('div', 'ph-card-label', label));
+        if (label) c.appendChild(node('div', 'ph-card-label', L(label)));
         return c;
     }
 
@@ -1164,7 +1561,7 @@
 
     function needsGrid(stats, keys) {
         if (!stats || stats.error || !stats.stats) {
-            return node('div', 'ph-empty', 'Needs unavailable');
+            return node('div', 'ph-empty', L('Needs unavailable'));
         }
         var grid = node('div', 'ph-needs');
         var names = stats.stat_names || {};
@@ -1200,13 +1597,13 @@
 
     function subHeader(screenId, title) {
         var head = node('div', 'ph-head');
-        var back = node('div', 'ph-back', '< Back');
+        var back = node('div', 'ph-back', L('< Back'));
         onTap(back, function (e) {
             e.stopPropagation();
             open(backTarget(screenId));
         });
         head.appendChild(back);
-        head.appendChild(node('div', 'ph-title', title || TITLES[screenId] || ''));
+        head.appendChild(node('div', 'ph-title', L(title || TITLES[screenId] || '')));
         return head;
     }
 
@@ -1462,11 +1859,11 @@
         tile.appendChild(icon);
         var badge = homeBadge(data, app.id);
         if (badge > 0) tile.appendChild(node('div', 'ph-badge', badge > 9 ? '9+' : String(badge)));
-        if (withLabel) tile.appendChild(node('div', 'ph-app-label', app.label));
+        if (withLabel) tile.appendChild(node('div', 'ph-app-label', L(app.label)));
         var id = app.id;
         if (!app.system) {
             var del = tile.appendChild(node('div', 'ph-del', '−'));
-            del.setAttribute('title', 'Remove ' + app.label);
+            del.setAttribute('title', L('Remove “{app}”?', { app: L(app.label) }));
             onTap(del, function (e) {
                 e.stopPropagation();
                 if (homeEditing) homeAskRemove(id);
@@ -1536,17 +1933,17 @@
         var box = veil.appendChild(node('div', 'hs-alert'));
         var icon = box.appendChild(node('div', 'ph-icon hs-alert-icon ' + app.cls));
         icon.appendChild(appGlyph(id));
-        box.appendChild(node('div', 'hs-alert-title', 'Remove “' + app.label + '”?'));
-        box.appendChild(node('div', 'hs-alert-text', 'It leaves the Home Screen. Get it again from the App Store any time; what it saved stays on the phone.'));
-        var yes = box.appendChild(node('div', 'hs-alert-btn danger', 'Delete App'));
-        var no = box.appendChild(node('div', 'hs-alert-btn', 'Cancel'));
+        box.appendChild(node('div', 'hs-alert-title', L('Remove “{app}”?', { app: L(app.label) })));
+        box.appendChild(node('div', 'hs-alert-text', L('It leaves the Home Screen. Get it again from the App Store any time; what it saved stays on the phone.')));
+        var yes = box.appendChild(node('div', 'hs-alert-btn danger', L('Delete App')));
+        var no = box.appendChild(node('div', 'hs-alert-btn', L('Cancel')));
         onTap(yes, function (e) {
             e.stopPropagation();
             homeAlertClose();
             var a = appRegistry[id];
             if (!a || a.system || !appInstalled(id)) return;
             appRemove(id);
-            setNote(a.label + ' removed. Get it again in the App Store.', false);
+            setNote(L('{app} removed. Get it again in the App Store.', { app: L(a.label) }), false);
             if (!APPS.some(function (x) { return !x.system; })) homeEditStop();
             refresh();
         });
@@ -1567,8 +1964,8 @@
     function homeTodayPage(data) {
         var env = data.env;
         var today = node('div', 'hs-page hs-today');
-        today.appendChild(joinWithDots(node('div', 'hs-today-date'), [env.day_of_week, env.season]));
-        today.appendChild(node('div', 'hs-today-title', 'Today'));
+        today.appendChild(joinWithDots(node('div', 'hs-today-date'), [L(env.day_of_week), L(env.season)]));
+        today.appendChild(node('div', 'hs-today-title', L('Today')));
         var me = card('NOW PLAYING');
         var info = data.info && !data.info.error ? data.info : { entity_id: data.id };
         var subParts = [info.relationship_label || info.age_group_text, info.job_name];
@@ -1585,9 +1982,9 @@
         var hero = node('div', 'ph-hero');
         hero.appendChild(node('div', 'ph-greet', greeting(env)));
         hero.appendChild(node('div', 'ph-clock', clockText(env)));
-        hero.appendChild(joinWithDots(node('div', 'ph-date'), [env.day_of_week, env.season]));
+        hero.appendChild(joinWithDots(node('div', 'ph-date'), [L(env.day_of_week), L(env.season)]));
         var weatherParts = [];
-        if (env.weather) weatherParts.push(WEATHER[env.weather] || env.weather);
+        if (env.weather) weatherParts.push(L(WEATHER[env.weather] || env.weather));
         if (typeof env.temperature === 'number') weatherParts.push(env.temperature + ' C');
         if (weatherParts.length) hero.appendChild(node('div', 'ph-weather', weatherParts.join('  ')));
         if (aiSetupState) hero.appendChild(homeSetupBanner(aiSetupState));
@@ -1598,8 +1995,8 @@
     function homeSetupBanner(state) {
         var stopped = state === 'stopped';
         var b = node('div', 'ph-setup' + (stopped ? ' stopped' : ''));
-        b.appendChild(node('div', 'ph-setup-title', stopped ? 'AI Phone Service is not running' : 'Finish setting up AI Phone'));
-        b.appendChild(node('div', 'ph-setup-sub', stopped ? 'AI 手机服务没有运行，点这里查看怎么启动' : '还差一步：安装 AI 手机服务，点这里查看'));
+        b.appendChild(node('div', 'ph-setup-title', stopped ? L('AI Phone Service is not running') : L('Finish setting up AI Phone')));
+        b.appendChild(node('div', 'ph-setup-sub', stopped ? L('点这里查看怎么启动') : L('还差一步：安装 AI 手机服务，点这里查看')));
         onTap(b, function (e) {
             e.stopPropagation();
             if (homeTapBlocked()) return;
@@ -1649,6 +2046,8 @@
         if (why) { traceNav('home rebuild: ' + why); return false; }
         // The setup banner changes the hero's height, which the icon pages were cut to.
         if (v.aiSetup !== (data.aiSetup || '')) { traceNav('home rebuild: ai setup ' + (data.aiSetup || 'done')); return false; }
+        // The app names are drawn in the phone's language (01-lang.js).
+        if (v.lang !== phoneLang) { traceNav('home rebuild: language ' + phoneLang); return false; }
         var key = homeTilesKey(data);
         if (v.tilesKey !== key) {
             if (v.tileIds !== homeTileIds() || !homePatchBadges(data)) { traceNav('home rebuild: apps changed'); return false; }
@@ -1665,7 +2064,7 @@
         var env = data.env;
         homeIcons = {};
         var wrap = node('div', 'hs' + (homeEditing ? ' hs-editing' : ''));
-        var done = wrap.appendChild(node('div', 'hs-done', 'Done'));
+        var done = wrap.appendChild(node('div', 'hs-done', L('Done')));
         onTap(done, function (e) {
             e.stopPropagation();
             homeEditStop();
@@ -1702,7 +2101,7 @@
 
         homeView = { wrap: wrap, viewport: viewport, track: track, dots: dots, today: today, main: main,
             pages: [today, main], tiles: tiles, w: 0, h: 0, hero: hero, tilesKey: homeTilesKey(data), tileIds: homeTileIds(),
-            aiSetup: data.aiSetup || '' };
+            aiSetup: data.aiSetup || '', lang: phoneLang };
         homeBindGestures(homeView);
         return wrap;
     }
@@ -2062,7 +2461,7 @@
 
     function swipeAllowed() {
         return current !== 'home' && !playedYoung && !transition && !homeLift &&
-            !dcCurtain && !txCurtain && !flCurtain && !nwCurtain && !oaCurtain &&
+            !dcCurtain && !txCurtain && !mmCurtain && !flCurtain && !nwCurtain && !oaCurtain &&
             !(wf.root && wf.root._minimized) && wf.content.style.display !== 'none';
     }
 
@@ -2224,45 +2623,337 @@
     swipeZone();
 
     // ------------------------------------------------------------------
-    // Family
+    // 我的家: the home's floor plan, storey by storey, with who of the family is where.
+    // ui/phone/home/plan.cfg, written by the reply service (lib/homeplan.js) while the played
+    // character is at home: { name, home, size, storeys: [{ level, walls: [[x1,y1,x2,y2]],
+    // rooms: [{ name, kind, x, y }], items: [{ kind, name, x, y, yaw }] }], people: [{ id, name,
+    // first, x, y, level, doing }], at }. Lot centimetres; away from home it is the plan last seen.
     // ------------------------------------------------------------------
+    var HOME_SECTION = 'ui/phone/home';
+    var homeLevel = null;
+    var HOME_MARGIN = 80;
+    // How each kind of thing is drawn: a letter on a tinted tile; doors and windows as bars.
+    var HOME_ITEMS = {
+        bed: { t: '床', c: '#5E5CE6' }, living: { t: '沙', c: '#FF9F0A' }, kitchen: { t: '厨', c: '#FF453A' },
+        bath: { t: '浴', c: '#64D2FF' }, dining: { t: '餐', c: '#30D158' }, study: { t: '桌', c: '#BF5AF2' },
+        laundry: { t: '洗', c: '#0A84FF' }
+    };
+
     function loadFamily() {
-        return Promise.all([getEnv(), getEmotionTable(), getMembers()]).then(function (r) {
-            var members = r[2];
-            return Promise.all([
-                getWorkStatus(members),
-                Promise.all(members.map(function (m) {
-                    var id = String(m.entity_id);
-                    return Promise.all([soft(getEmotion(id)), soft(getStats(id))]);
-                }))
-            ]).then(function (d) {
-                return { env: r[0], table: r[1], members: members, work: d[0], details: d[1] };
-            });
+        return Promise.all([cfgValue(HOME_SECTION, 'plan'), getMembers(), soft(getPossessedId()), cfgValue(HOME_SECTION, 'names')]).then(function (r) {
+            return { plan: r[0] && Array.isArray(r[0].storeys) ? r[0] : null, members: r[1] || [], played: r[2] && !r[2].error ? String(r[2]) : '',
+                names: r[3] && r[3].byKey ? r[3] : null };
         });
     }
 
-    function renderFamily(data) {
-        var wrap = node('div');
-        wrap.appendChild(subHeader('family'));
-        if (!data.members.length) {
+    // The span of everything drawn, over all storeys, so switching storeys keeps the same frame.
+    function homeBounds(plan) {
+        var b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+        plan.storeys.forEach(function (s) {
+            s.walls.forEach(function (w) {
+                b.x0 = Math.min(b.x0, w[0], w[2]); b.x1 = Math.max(b.x1, w[0], w[2]);
+                b.y0 = Math.min(b.y0, w[1], w[3]); b.y1 = Math.max(b.y1, w[1], w[3]);
+            });
+        });
+        if (!isFinite(b.x0)) return null;
+        b.x0 -= HOME_MARGIN; b.y0 -= HOME_MARGIN; b.x1 += HOME_MARGIN; b.y1 += HOME_MARGIN;
+        return b;
+    }
+
+    // The nearest room on the same storey, for "在客厅".
+    function homeRoomAt(storey, p) {
+        var best = null;
+        (storey ? storey.rooms : []).forEach(function (r) {
+            if (r.kind === 'yard') return;
+            var d = Math.sqrt((r.x - p.x) * (r.x - p.x) + (r.y - p.y) * (r.y - p.y));
+            if (d < 450 && (!best || d < best.d)) best = { r: r, d: d };
+        });
+        return best ? best.r.name : '';
+    }
+
+    function homeSvg(w, h, b) {
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', String(w));
+        svg.setAttribute('height', String(h));
+        svg.setAttribute('viewBox', b.x0 + ' ' + b.y0 + ' ' + (b.x1 - b.x0) + ' ' + (b.y1 - b.y0));
+        svg.setAttribute('class', 'hm-svg');
+        return svg;
+    }
+
+    function homeMap(data, plan, storey, width) {
+        var b = homeBounds(plan);
+        var box = node('div', 'hm-map');
+        if (!b) return box;
+        var scale = width / (b.x1 - b.x0);
+        var height = Math.round((b.y1 - b.y0) * scale);
+        box.style.width = width + 'px';
+        box.style.height = height + 'px';
+        var at = function (x, y) { return { left: Math.round((x - b.x0) * scale), top: Math.round((y - b.y0) * scale) }; };
+        var svg = box.appendChild(homeSvg(width, height, b));
+        storey.walls.forEach(function (wl) {
+            var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', String(wl[0])); line.setAttribute('y1', String(wl[1]));
+            line.setAttribute('x2', String(wl[2])); line.setAttribute('y2', String(wl[3]));
+            line.setAttribute('class', 'hm-wall');
+            line.setAttribute('stroke-width', String(Math.max(10, Math.round(2.6 / scale))));
+            line.setAttribute('stroke-linecap', 'square');
+            svg.appendChild(line);
+        });
+        // Doors and windows over the walls, then furniture, then room names, then people.
+        storey.items.forEach(function (it) {
+            var p = at(it.x, it.y);
+            if (it.kind === 'door' || it.kind === 'window') {
+                var bar = box.appendChild(node('div', 'hm-' + it.kind));
+                bar.style.left = p.left + 'px';
+                bar.style.top = p.top + 'px';
+                bar.style.transform = 'translate(-50%, -50%) rotate(' + (it.yaw || 0) + 'deg)';
+                return;
+            }
+            var k = HOME_ITEMS[it.kind];
+            if (!k) return;
+            var tile = box.appendChild(node('div', 'hm-item', it.kind === 'living' && /电视|TV/i.test(it.name) ? '视' : k.t));
+            tile.style.left = p.left + 'px';
+            tile.style.top = p.top + 'px';
+            tile.style.color = k.c;
+            tile.style.background = oaTint(k.c, 0.16);
+        });
+        storey.rooms.forEach(function (r) {
+            var p = at(r.x, r.y);
+            var label = box.appendChild(node('div', 'hm-room' + (r.kind === 'yard' ? ' yard' : '') + (r.set ? ' set' : ''), r.name));
+            label.style.left = p.left + 'px';
+            label.style.top = p.top + 'px';
+            if (r.key) onTap(label, function (e) { e.stopPropagation(); homeOpenRoom(r); });
+        });
+        (plan.home ? plan.people || [] : []).forEach(function (pp) {
+            if (pp.level !== storey.level) return;
+            var p = at(pp.x, pp.y);
+            var dot = box.appendChild(node('div', 'hm-person'));
+            dot.style.left = p.left + 'px';
+            dot.style.top = p.top + 'px';
+            var m = memberById(data.members, pp.id) || { entity_id: pp.id, first_name: pp.first || pp.name };
+            dot.appendChild(faceAvatar(m));
+            dot.appendChild(node('div', 'hm-person-name', pp.first || pp.name));
+            dot.style.borderColor = accentFor(pp.id);
+        });
+        return box;
+    }
+
+// ---------- 我的家: what a room is, as the player says (ui/phone/home/names.cfg) ----------
+    // { v, site, byKey: { <room key>: { kind, owners, owner, name, at } } }, written only here; the reply
+    // service gives it to every character, so they all call the room the player's way.
+    var HOME_KINDS = [
+        { id: 'living', name: '客厅' }, { id: 'bed', name: '卧室' }, { id: 'kitchen', name: '厨房' }, { id: 'bath', name: '卫生间' },
+        { id: 'study', name: '书房' }, { id: 'dining', name: '餐厅' }, { id: 'laundry', name: '洗衣间' }, { id: 'yard', name: '院子' },
+        { id: 'other', name: '其他' }
+    ];
+    var HOME_NAME_MAX = 12;
+    var homeEditKey = null;
+    var homeDraft = null;     // { key, kind, owners: [id], name }; a bedroom may be a couple's
+
+    function homeOpenRoom(r) {
+        homeEditKey = r.key;
+        var s = r.set || {};
+        var owners = s.owners && s.owners.length ? s.owners.map(String) : s.owner ? [String(s.owner)] : [];
+        homeDraft = { key: r.key, kind: s.kind || r.kind || 'other', owners: owners, name: s.name || '' };
+        open('homeRoom');
+    }
+
+    // What the characters will call it, as the service will (lib/rooms.js setText).
+    function homeSpoken(draft, data) {
+        if (draft.name) return draft.name;
+        var k = HOME_KINDS.filter(function (x) { return x.id === draft.kind; })[0];
+        var base = k && k.id !== 'other' ? k.name : '房间';
+        if (draft.kind === 'bed' && draft.owners.length) {
+            var who = draft.owners.map(function (id) { var m = memberById(data.members, id); return m ? (draft.owners.length > 1 ? m.first_name || fullName(m) : fullName(m)) : ''; })
+                .filter(Boolean);
+            if (who.length) return who.join('和') + '的卧室';
+        }
+        return base;
+    }
+
+    function homeSaveNames(data, key, value) {
+        var cur = data.names && data.names.byKey ? data.names.byKey : {};
+        var byKey = {};
+        for (var k in cur) if (cur.hasOwnProperty(k) && k !== key) byKey[k] = cur[k];
+        if (value) byKey[key] = value;
+        return saveJson('names', { v: 1, site: data.plan.site, byKey: byKey }, HOME_SECTION);
+    }
+
+    function homeChip(text, on, fn) {
+        var chip = node('div', 'oa-chip hm-chip' + (on ? ' on' : ''), text);
+        onTap(chip, function (e) { e.stopPropagation(); fn(); });
+        return chip;
+    }
+
+    function renderHomeRoom(data) {
+        var wrap = node('div', 'hm-screen');
+        wrap.appendChild(subHeader('homeRoom'));
+        var plan = data.plan;
+        var room = null;
+        (plan ? plan.storeys : []).forEach(function (s) { s.rooms.forEach(function (r) { if (r.key === homeEditKey) room = r; }); });
+        if (!room || !homeDraft || homeDraft.key !== homeEditKey) {
             var none = card();
-            none.appendChild(node('div', 'ph-empty', 'No household members found.'));
+            none.appendChild(node('div', 'ph-empty', '找不到这个房间了，回户型图再选一次。'));
             wrap.appendChild(none);
             return wrap;
         }
-        data.members.forEach(function (m, idx) {
-            var detail = data.details[idx] || [];
-            var c = card();
-            var work = data.work[String(m.entity_id)];
-            var subParts = [m.relationship_label || m.age_group_text];
-            if (m.has_career) {
-                var state = describe(work, null, data.env);
-                subParts.push(state.text);
-            }
-            c.appendChild(personRow(m, subParts, moodPill(emotionLabel(data.table, detail[0]))));
-            c.appendChild(needsGrid(detail[1], FAMILY_NEEDS));
-            wrap.appendChild(c);
+        var head = card();
+        head.className += ' hm-head';
+        head.appendChild(node('div', 'hm-name', homeSpoken(homeDraft, data)));
+        head.appendChild(node('div', 'hm-sub', '自动识别：' + (room.auto || '房间') + '（看里面的家具判断）'));
+        wrap.appendChild(head);
+
+        var kinds = card('这是什么房间');
+        var chips = [];
+        HOME_KINDS.forEach(function (k) {
+            chips.push(homeChip(k.name, homeDraft.kind === k.id, function () {
+                homeDraft.kind = k.id;
+                if (k.id !== 'bed') homeDraft.owners = [];
+                refresh();
+            }));
         });
+        kinds.appendChild(oaChipRows(chips, 4));
+        wrap.appendChild(kinds);
+
+        if (homeDraft.kind === 'bed') {
+            var whose = card('谁的卧室（可多选，比如夫妻、情侣）');
+            var owners = [homeChip('不属于谁', !homeDraft.owners.length, function () { homeDraft.owners = []; refresh(); })];
+            data.members.forEach(function (m) {
+                if (NO_PHONE_STEPS[m.age_group] && m.age_group !== 'Toddler') return;
+                var id = String(m.entity_id);
+                owners.push(homeChip(m.first_name || fullName(m), homeDraft.owners.indexOf(id) >= 0, function () {
+                    // Read the draft as it is now: a redraw keeps the old chip (morph).
+                    var list = homeDraft ? homeDraft.owners.slice() : [];
+                    var at = list.indexOf(id);
+                    if (at >= 0) list.splice(at, 1);
+                    else list.push(id);
+                    if (homeDraft) homeDraft.owners = list;
+                    refresh();
+                }));
+            });
+            whose.appendChild(oaChipRows(owners, 3));
+            wrap.appendChild(whose);
+        }
+
+        var named = card('自己起个名字（可不填）');
+        var input = named.appendChild(node('input', 'oa-wage-input hm-name-input'));
+        input.id = 'hm-room-name';
+        applyUiFont(input);
+        input.setAttribute('maxlength', String(HOME_NAME_MAX));
+        input.setAttribute('placeholder', '比如：琴房、婴儿房、健身房');
+        input.value = homeDraft.name || '';
+        input.addEventListener('input', function () { if (homeDraft) homeDraft.name = input.value.trim().slice(0, HOME_NAME_MAX); });
+        named.appendChild(node('div', 'oa-foot', '填了名字就用这个名字；不填就按上面选的类型叫。'));
+        wrap.appendChild(named);
+
+        var act = card();
+        act.appendChild(node('div', 'hm-sub', '保存后，家里每个人在聊天里都会这样称呼这个房间，比如「我在' + homeSpoken(homeDraft, data) + '」。'));
+        var row = act.appendChild(node('div', 'oa-ap-actions'));
+        var reset = row.appendChild(node('div', 'oa-ap-btn', '恢复自动识别'));
+        var save = row.appendChild(node('div', 'oa-ap-btn primary', '保存'));
+        onTap(reset, function (e) {
+            e.stopPropagation();
+            homeSaveNames(data, homeEditKey, null).then(function () { setNote('已恢复自动识别。', false); open('family'); }, function () { setNote('没保存上，再试一次。', true); });
+        });
+        onTap(save, function (e) {
+            e.stopPropagation();
+            // The box on the page now (a redraw may have put a new one in its place).
+            var box = document.getElementById('hm-room-name');
+            if (box && homeDraft) homeDraft.name = String(box.value || '').trim().slice(0, HOME_NAME_MAX);
+            var d = homeDraft;
+            if (!d) return;
+            var bedOwners = d.kind === 'bed' ? d.owners.slice() : [];
+            homeSaveNames(data, d.key, { kind: d.kind, owners: bedOwners, owner: bedOwners[0] || '', name: d.name, at: Date.now() }).then(function () {
+                setNote('已保存：' + homeSpoken(d, data) + '。', false);
+                open('family');
+            }, function () { setNote('没保存上，再试一次。', true); });
+        });
+        wrap.appendChild(act);
+        return wrap;
+    }
+
+    function renderFamily(data) {
+        var wrap = node('div', 'hm-screen');
+        wrap.appendChild(subHeader('family'));
+        var plan = data.plan;
+        if (!plan || !plan.storeys.length) {
+            var none = card();
+            none.appendChild(node('div', 'ph-empty', L('Your home is drawn the next time you are there.')));
+            wrap.appendChild(none);
+            return wrap;
+        }
+        var levels = plan.storeys.map(function (s) { return s.level; });
+        if (homeLevel === null || levels.indexOf(homeLevel) < 0) {
+            // The storey the played character is on, else the ground floor.
+            var me = (plan.people || []).filter(function (p) { return p.id === data.played; })[0];
+            homeLevel = me && levels.indexOf(me.level) >= 0 ? me.level : levels[0];
+        }
+        var storey = plan.storeys.filter(function (s) { return s.level === homeLevel; })[0];
+        var head = card();
+        head.className += ' hm-head';
+        var top = head.appendChild(node('div', 'ph-row'));
+        var who = top.appendChild(node('div', 'ph-who'));
+        who.appendChild(node('div', 'hm-name', plan.name || L('My Home')));
+        var rooms = 0;
+        plan.storeys.forEach(function (s) { rooms += s.rooms.filter(function (r) { return r.kind !== 'yard'; }).length; });
+        who.appendChild(node('div', 'hm-sub', L('{n} storeys · {r} rooms', { n: plan.storeys.length, r: rooms }) + (plan.home ? '' : ' · ' + L('away from home'))));
+        if (levels.length > 1) {
+            var seg = head.appendChild(node('div', 'hm-seg'));
+            levels.forEach(function (lv) {
+                var here = (plan.home ? plan.people || [] : []).filter(function (p) { return p.level === lv; }).length;
+                var item = seg.appendChild(node('div', 'hm-seg-item' + (lv === homeLevel ? ' on' : ''), L('Floor {n}', { n: lv + 1 }) + (here ? ' · ' + here : '')));
+                onTap(item, function (e) {
+                    e.stopPropagation();
+                    if (homeLevel === lv) return;
+                    homeLevel = lv;
+                    refresh();
+                });
+            });
+        }
+        wrap.appendChild(head);
+        var mapCard = card();
+        mapCard.className += ' hm-card';
+        var width = 296;
+        mapCard.appendChild(homeMap(data, plan, storey, width));
+        wrap.appendChild(mapCard);
+        // The rooms of this storey: what each is, and a tap to say otherwise.
+        var list = storey.rooms.filter(function (r) { return r.key; });
+        if (list.length) {
+            var roomsCard = card('房间 · 点一下设定是什么');
+            list.forEach(function (r) {
+                var row = roomsCard.appendChild(node('div', 'ph-row hm-room-row'));
+                var w = row.appendChild(node('div', 'ph-who'));
+                w.appendChild(node('div', 'hm-where-name', r.name));
+                w.appendChild(node('div', 'hm-where-sub', r.set ? '你设定的 · 自动识别是' + (r.auto || '房间') : '自动识别'));
+                row.appendChild(node('span', 'ph-pill ' + (r.set ? 'pill-work' : 'pill-idle'), r.set ? '已设定' : '设定'));
+                onTap(row, function (e) { e.stopPropagation(); homeOpenRoom(r); });
+            });
+            wrap.appendChild(roomsCard);
+        }
+        // Who is where, under the map.
+        var people = plan.home ? plan.people || [] : [];
+        if (people.length) {
+            var where = card();
+            people.forEach(function (pp) {
+                var s = plan.storeys.filter(function (x) { return x.level === pp.level; })[0];
+                var room = homeRoomAt(s, pp);
+                var row = where.appendChild(node('div', 'ph-row hm-where'));
+                var m = memberById(data.members, pp.id) || { entity_id: pp.id, first_name: pp.first || pp.name };
+                row.appendChild(faceAvatar(m));
+                var w = row.appendChild(node('div', 'ph-who'));
+                w.appendChild(node('div', 'hm-where-name', pp.name));
+                w.appendChild(node('div', 'hm-where-sub', [levels.length > 1 ? L('Floor {n}', { n: pp.level + 1 }) : '', room, pp.doing].filter(Boolean).join(' · ')));
+                onTap(row, function (e) {
+                    e.stopPropagation();
+                    if (homeLevel === pp.level) return;
+                    homeLevel = pp.level;
+                    refresh();
+                });
+            });
+            wrap.appendChild(where);
+        }
+        wrap.appendChild(node('div', 'ph-caption hm-foot', plan.home ? L('Drawn from the game while you are at home.')
+            : L('Away from home: this is how it looked the last time you were there.')));
         return wrap;
     }
 
@@ -3211,7 +3902,10 @@
 
     function loadOa() {
         return Promise.all([getEnv(), getMembers(), soft(getPossessedId()), loadPortraitIndex(),
-            cfgValue(SOUND_SECTION, OA_REQ_KEY), cfgValue(OA_SECTION, 'decisions'), cfgValue(OA_SECTION, 'impressions'), cfgValue(OA_SECTION, 'tasks')]).then(function (r) {
+            cfgValue(SOUND_SECTION, OA_REQ_KEY), cfgValue(OA_SECTION, 'decisions'), cfgValue(OA_SECTION, 'impressions'), cfgValue(OA_SECTION, 'tasks'),
+            cfgValue(OA_SECTION, 'company'), cfgValue(SOUND_SECTION, OA_MGMT_KEY)]).then(function (r) {
+            oaMgRead(r[8]);
+            oaMgReadMine(r[9]);
             var env = r[0];
             var played = r[2] && !r[2].error ? String(r[2]) : '';
             var workers = r[1].filter(function (m) { return !!m.has_career; });
@@ -3354,11 +4048,178 @@
                 (org && org.rankList ? org.rankList : []).forEach(function (k) { keys.push(k.rankName); });
                 var ids = company ? Object.keys(company.memberInfo || {}).map(oaParseId)
                     .filter(function (x) { return x && x !== id; }) : [];
-                return Promise.all([localize(keys), oaNames(ids.slice(0, OA_TEAM_MAX), contacts)]).then(function (t) {
-                    return oaDesk(member, played, slot, row, org, company, rels, t[0], t[1]);
+                var tp = company && company.activeTeamProject && company.activeTeamProject.projectId;
+                return (tp && tp !== 'None' ? oaProjectRow(tp) : Promise.resolve(null)).then(function (pr) {
+                    if (pr) keys.push(pr.titleTextId, pr.descTextId);
+                    return Promise.all([localize(keys), oaNames(ids.slice(0, OA_TEAM_MAX), contacts)]).then(function (t) {
+                        var desk = oaDesk(member, played, slot, row, org, company, rels, t[0], t[1]);
+                        if (desk && !desk.school) desk.project = oaProjectOf(company, pr, t[0]);
+                        return desk;
+                    });
                 });
             });
         });
+    }
+
+    // ---------- the company's team project (the game's own) ----------
+    // The company entity's activeTeamProject: { projectId, currentPoint, totalPoint, startTicks,
+    // deadlineTicks, memberContributions: { "(Value=<id>)": points }, bIsActive }, its TeamProject
+    // table row { titleTextId, descTextId, durationDays, baseReward }. Ticks are 10,000,000 a second
+    // from day 0 (lib/teamproject.js reads them the same way).
+    var OA_TICKS_PER_MIN = 600000000;
+    var OA_PJ_COLOR = '#5E5CE6';
+    var oaProjectRows = {};
+    var OA_PACE = {
+        done: { text: '已完成', cls: 'pill-work', color: '#30D158' },
+        ahead: { text: '进度领先', cls: 'pill-work', color: '#30D158' },
+        ok: { text: '进度正常', cls: 'oa-pill-info', color: '#0A84FF' },
+        behind: { text: '进度落后', cls: 'pill-move', color: '#FF9F0A' },
+        late: { text: '已超期', cls: 'pill-late', color: '#FF453A' }
+    };
+
+    function oaProjectRow(id) {
+        if (oaProjectRows[id]) return Promise.resolve(oaProjectRows[id]);
+        return soft(call('data.table_get', { Alias: 'TeamProject', Row: id }, 'totalPoint')).then(function (r) {
+            if (!r || r.error) return null;
+            oaProjectRows[id] = r;
+            return r;
+        });
+    }
+
+    function oaTickMin(t) {
+        return Math.floor(Number(t) / OA_TICKS_PER_MIN);
+    }
+
+    function oaEnvMin(env) {
+        return env && typeof env.day === 'number' ? env.day * 1440 + (Number(env.hour) || 0) * 60 + (Number(env.minute) || 0) : null;
+    }
+
+    function oaClockOf(min) {
+        var m = ((min % 1440) + 1440) % 1440;
+        var h = Math.floor(m / 60);
+        var mm = m % 60;
+        return (h < 10 ? '0' : '') + h + ':' + (mm < 10 ? '0' : '') + mm;
+    }
+
+    function oaProjectOf(company, row, text) {
+        var p = company && company.activeTeamProject;
+        if (!p || !p.projectId || p.projectId === 'None') return null;
+        var open = company.lastOperatingStartTicks ? oaTickMin(company.lastOperatingStartTicks) % 1440 : 540;
+        var close = company.todayOperatingEndTicks ? oaTickMin(company.todayOperatingEndTicks) % 1440 : 1020;
+        if (!(close > open)) { open = 540; close = 1020; }
+        var contributions = {};
+        Object.keys(p.memberContributions || {}).forEach(function (k) {
+            var id = oaParseId(k);
+            if (id) contributions[id] = Number(p.memberContributions[k]) || 0;
+        });
+        var say = function (k) { return k && text[k] && text[k] !== k ? text[k] : ''; };
+        return {
+            id: String(p.projectId), title: (row && say(row.titleTextId)) || String(p.projectId), desc: row ? say(row.descTextId) : '',
+            days: row ? Number(row.durationDays) || 0 : 0, reward: row ? Number(row.baseReward) || 0 : 0,
+            current: Number(p.currentPoint) || 0, total: Number(p.totalPoint) || 0,
+            startMin: oaTickMin(p.startTicks), deadlineMin: oaTickMin(p.deadlineTicks), active: p.bIsActive !== false,
+            contributions: contributions, open: open, close: close
+        };
+    }
+
+    function oaWorkMin(from, to, open, close) {
+        if (!(to > from)) return 0;
+        var sum = 0;
+        for (var day = Math.floor(from / 1440); day <= Math.floor(to / 1440); day++) {
+            var a = Math.max(from, day * 1440 + open);
+            var b = Math.min(to, day * 1440 + close);
+            if (b > a) sum += b - a;
+        }
+        return sum;
+    }
+
+    // { pct, timePct, pace } as lib/teamproject.js standing().
+    function oaStanding(p, env) {
+        var now = oaEnvMin(env);
+        var pct = p.total ? Math.min(1, p.current / p.total) : 0;
+        var all = oaWorkMin(p.startMin, p.deadlineMin, p.open, p.close);
+        var spent = now === null ? 0 : oaWorkMin(p.startMin, Math.min(now, p.deadlineMin), p.open, p.close);
+        var timePct = all ? spent / all : 0;
+        var pace = 'ok';
+        if (pct >= 1) pace = 'done';
+        else if (now !== null && now >= p.deadlineMin) pace = 'late';
+        else if (timePct < 0.05) pace = 'ok';
+        else if (pct >= timePct + 0.1) pace = 'ahead';
+        else if (pct < timePct - 0.15) pace = 'behind';
+        return { pct: pct, timePct: timePct, pace: pace };
+    }
+
+    function oaDeadlineText(p, env) {
+        var day = Math.floor(p.deadlineMin / 1440);
+        var at = oaClockOf(p.deadlineMin);
+        var now = oaEnvMin(env);
+        if (now === null) return '第 ' + day + ' 天 ' + at + ' 截止';
+        if (p.deadlineMin <= now) return '已过截止时间';
+        if (day === env.day) return '今天 ' + at + ' 截止';
+        if (day === env.day + 1) return '明天 ' + at + ' 截止';
+        return '还剩 ' + (day - env.day) + ' 天 · 第 ' + day + ' 天 ' + at + ' 截止';
+    }
+
+    // Who has put in how much, most first; with everyone on the team when all is set.
+    function oaContributors(data, desk, p, all) {
+        var people = [{ id: desk.memberId, person: data.member, me: true }];
+        desk.team.forEach(function (t) { people.push({ id: t.id, person: t.person }); });
+        people.forEach(function (x) { x.points = p.contributions[x.id] || 0; });
+        if (!all) people = people.filter(function (x) { return x.points > 0; });
+        people.sort(function (a, b) { return b.points - a.points; });
+        return people;
+    }
+
+    function oaContributorRow(x, max) {
+        var row = node('div', 'oa-pj-who' + (x.me ? ' me' : ''));
+        row.appendChild(faceAvatar(x.person));
+        row.appendChild(node('div', 'oa-pj-name', x.me ? '我' : fullName(x.person)));
+        var track = row.appendChild(node('div', 'oa-pj-mini'));
+        var fill = track.appendChild(node('div', 'oa-pj-mini-fill'));
+        fill.style.width = (max ? Math.max(x.points ? 4 : 0, Math.round(x.points / max * 100)) : 0) + '%';
+        row.appendChild(node('div', 'oa-pj-pts' + (x.points ? '' : ' none'), x.points ? String(x.points) : '没出力'));
+        return row;
+    }
+
+    // The project card: what it is, how far, by when, and who is carrying it.
+    function oaProjectCard(data, desk, full) {
+        var p = desk.project;
+        if (!p) return null;
+        var s = oaStanding(p, data.env);
+        var pace = OA_PACE[s.pace];
+        var c = card(full ? '当前项目' : '团队项目');
+        var head = c.appendChild(node('div', 'ph-row oa-pj-head'));
+        head.appendChild(oaMark('项', OA_PJ_COLOR, 'oa-req-mark'));
+        var who = head.appendChild(node('div', 'ph-who'));
+        who.appendChild(node('div', 'oa-req-title', p.title));
+        who.appendChild(node('div', 'oa-pj-sub', [p.days ? '工期 ' + p.days + ' 天' : '', p.reward ? '项目奖励 ' + p.reward : ''].filter(Boolean).join(' · ')));
+        head.appendChild(node('span', 'ph-pill ' + pace.cls, pace.text));
+        if (p.desc) c.appendChild(node('div', 'oa-pj-desc', p.desc));
+        var nums = c.appendChild(node('div', 'oa-pj-nums'));
+        nums.appendChild(node('span', 'oa-pj-now', String(p.current)));
+        nums.appendChild(node('span', 'oa-pj-total', ' / ' + p.total + ' 点'));
+        nums.appendChild(node('span', 'oa-pj-pct', Math.round(s.pct * 100) + '%'));
+        var track = c.appendChild(node('div', 'oa-pj-track'));
+        var fill = track.appendChild(node('div', 'oa-pj-fill'));
+        fill.style.width = Math.round(s.pct * 100) + '%';
+        fill.style.background = pace.color;
+        // Where the points should be by now, if the work were spread evenly over office hours.
+        if (s.pace !== 'done' && s.timePct > 0.02 && s.timePct < 1) track.appendChild(node('div', 'oa-pj-mark')).style.left = Math.round(s.timePct * 100) + '%';
+        var meta = c.appendChild(node('div', 'oa-pj-meta'));
+        meta.appendChild(node('span', null, oaDeadlineText(p, data.env)));
+        var people = oaContributors(data, desk, p, !!full);
+        var mine = p.contributions[desk.memberId] || 0;
+        var place = 0;
+        people.forEach(function (x, i) { if (x.me) place = i + 1; });
+        meta.appendChild(node('span', 'oa-pj-mine', mine ? '我出力 ' + mine + ' 点' + (place ? ' · 第 ' + place : '') : '我还没出力'));
+        if (people.length) {
+            var list = c.appendChild(node('div', 'oa-pj-list'));
+            var max = people[0].points;
+            people.slice(0, full ? 12 : 4).forEach(function (x) { list.appendChild(oaContributorRow(x, max)); });
+        }
+        c.appendChild(node('div', 'oa-foot', full ? '上班时做工作类的事都会给项目加点；竖线是按时完成此刻应到的进度。'
+            : '上班时做工作类的事都会给项目加点。竖线是按时完成此刻应到的进度。'));
+        return c;
     }
 
     // Names and faces of colleagues: the contact list first, else the game's character info,
@@ -3404,7 +4265,7 @@
             if (!found) return;
             team.push({
                 id: pid, rank: Number(m.rank) || 0, rankName: rankName(Number(m.rank) || 0),
-                attendance: Number(m.attendanceDays) || 0,
+                attendance: Number(m.attendanceDays) || 0, evaluation: Number(m.evaluationScore) || 0,
                 person: found.person || { entity_id: pid }, contact: found.contact,
                 business: oaRelStat(rels, pid, 'Business')
             });
@@ -3506,32 +4367,80 @@
         return head;
     }
 
+    // A colour as rgba at the given alpha ('#0A84FF' -> 'rgba(10,132,255,0.16)').
+    function oaTint(hex, alpha) {
+        var m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+        if (!m) return hex;
+        var n = parseInt(m[1], 16);
+        return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + alpha + ')';
+    }
+
     function oaMark(text, color, cls) {
         var m = node('div', 'oa-mark' + (cls ? ' ' + cls : ''), text);
-        m.style.background = color;
+        m.style.background = oaTint(color, 0.16);
+        m.style.color = color;
         return m;
+    }
+
+    // The company's colours for its header: a deep gradient picked by its name.
+    var OA_HERO = [['#1F4FD1', '#3D7DFF'], ['#0E6670', '#1B9AA0'], ['#3A2F9E', '#6A5BE8'],
+        ['#9A3F14', '#D9732E'], ['#1D5C3A', '#2E9A5C'], ['#5B2A7C', '#9553C4']];
+
+    function oaHeroColors(name) {
+        var n = 0;
+        for (var i = 0; i < name.length; i++) n = (n * 31 + name.charCodeAt(i)) % 9973;
+        return OA_HERO[n % OA_HERO.length];
+    }
+
+    function oaHeroKpi(value, label, warn) {
+        var k = node('div', 'oa-hero-kpi');
+        k.appendChild(node('div', 'oa-hero-kpi-val' + (warn ? ' warn' : ''), value));
+        k.appendChild(node('div', 'oa-hero-kpi-label', label));
+        return k;
     }
 
     // ---------- the workbench (home page) ----------
 
     // The company's letterhead: logo, name, the member's badge and who else at home works.
     function oaBrand(data, desk) {
-        var c = node('div', 'ph-card oa-brand');
+        var colors = oaHeroColors(desk.company);
+        var c = node('div', 'ph-card oa-hero');
+        c.style.background = 'linear-gradient(135deg, ' + colors[0] + ', ' + colors[1] + ')';
         var top = node('div', 'ph-row');
-        top.appendChild(oaMark(desk.company.charAt(0), accentFor(desk.company.length * 7 + desk.company.charCodeAt(0)), 'oa-logo'));
+        top.appendChild(node('div', 'oa-hero-logo', desk.company.charAt(0)));
         var who = node('div', 'ph-who');
-        who.appendChild(node('div', 'oa-company', desk.company));
-        who.appendChild(node('div', 'oa-badge', '工号 ' + desk.memberId + ' · ' + desk.job));
+        who.appendChild(node('div', 'oa-hero-company', desk.company));
+        who.appendChild(node('div', 'oa-hero-badge', desk.job + ' · 工号 ' + desk.memberId));
         top.appendChild(who);
+        if (data.workers.length > 1) top.appendChild(oaPeople(data));
         c.appendChild(top);
-        var me = node('div', 'ph-row oa-me');
+        var me = node('div', 'ph-row oa-hero-me');
         me.appendChild(faceAvatar(data.member));
         var name = node('div', 'ph-who');
-        name.appendChild(node('div', 'ph-name', fullName(data.member)));
-        name.appendChild(node('div', 'ph-sub', desk.rankName + ' · 第 ' + desk.rank + ' 级'));
+        name.appendChild(node('div', 'oa-hero-name', fullName(data.member)));
+        name.appendChild(node('div', 'oa-hero-rank', desk.rankName + ' · 第 ' + desk.rank + ' 级'));
         me.appendChild(name);
-        if (data.workers.length > 1) me.appendChild(oaPeople(data));
         c.appendChild(me);
+        var kpis = node('div', 'oa-hero-kpis');
+        var grade = oaGrade(desk.evaluation);
+        kpis.appendChild(oaHeroKpi(grade.g, '绩效 ' + desk.evaluation, grade.tone === 'bad'));
+        kpis.appendChild(oaHeroKpi(desk.attendance === null ? '-' : String(desk.attendance), '出勤天数'));
+        kpis.appendChild(oaHeroKpi(desk.leaveLeft === null ? '-' : String(desk.leaveLeft), '年假余额'));
+        kpis.appendChild(oaHeroKpi(String(desk.unexcused), '旷工', desk.unexcused > 0));
+        c.appendChild(kpis);
+        var line = node('div', 'oa-hero-progress');
+        if (desk.nextRankName) {
+            var span = desk.expTo - desk.expFrom;
+            var pct = span > 0 ? Math.max(0, Math.min(100, (desk.exp - desk.expFrom) / span * 100)) : 100;
+            var head = line.appendChild(node('div', 'oa-hero-progress-head'));
+            head.appendChild(node('span', null, '距晋升「' + desk.nextRankName + '」'));
+            head.appendChild(node('span', 'oa-hero-progress-num', desk.exp + ' / ' + desk.expTo));
+            var track = line.appendChild(node('div', 'oa-hero-track'));
+            track.appendChild(node('div', 'oa-hero-fill')).style.width = Math.round(pct) + '%';
+        } else {
+            line.appendChild(node('div', 'oa-hero-progress-head', '已是公司最高职级'));
+        }
+        c.appendChild(line);
         return c;
     }
 
@@ -3606,34 +4515,6 @@
         return week;
     }
 
-    function oaKpi(value, label, tone) {
-        var k = node('div', 'oa-kpi');
-        k.appendChild(node('div', 'oa-kpi-val' + (tone ? ' ' + tone : ''), value));
-        k.appendChild(node('div', 'oa-kpi-label', label));
-        return k;
-    }
-
-    function oaBoard(desk) {
-        var c = card('数据看板');
-        var row = node('div', 'oa-kpis');
-        var grade = oaGrade(desk.evaluation);
-        row.appendChild(oaKpi(grade.g, '绩效 ' + desk.evaluation, grade.tone));
-        row.appendChild(oaKpi(desk.attendance === null ? '-' : String(desk.attendance), '出勤天数'));
-        row.appendChild(oaKpi(desk.leaveLeft === null ? '-' : String(desk.leaveLeft), '年假余额'));
-        row.appendChild(oaKpi(String(desk.unexcused), '旷工', desk.unexcused ? 'bad' : ''));
-        c.appendChild(row);
-        if (desk.nextRankName) {
-            var span = desk.expTo - desk.expFrom;
-            var pct = span > 0 ? (desk.exp - desk.expFrom) / span * 100 : 100;
-            var line = node('div', 'oa-progress-head');
-            line.appendChild(node('span', null, '晋升「' + desk.nextRankName + '」'));
-            line.appendChild(node('span', 'oa-progress-num', desk.exp + ' / ' + desk.expTo));
-            c.appendChild(line);
-            c.appendChild(bar(pct, '#FF9F0A'));
-        }
-        return c;
-    }
-
     // Notices the company would send: what is worth acting on now.
     function oaNotices(desk, requests) {
         var out = [];
@@ -3700,7 +4581,10 @@
             }));
         });
         var block = oaBossBlock(desk);
-        grid.appendChild(oaApp('联系上级', '聊', '#0A84FF', block ? '不可用' : desk.boss ? fullName(desk.boss.person) : '', function () {
+        var run = oaRun(desk);
+        // Nobody above to text: the company to run instead.
+        if (run) grid.appendChild(oaApp('管理台', '管', '#FF453A', oaMgWaiting(run).length ? oaMgWaiting(run).length + ' 待批' : '经营', function () { open('oaManage'); }));
+        else grid.appendChild(oaApp('联系上级', '聊', '#0A84FF', block ? '不可用' : desk.boss ? fullName(desk.boss.person) : '', function () {
             if (block) setNote(block, false);
             else oaOpenChat(data, desk, '');
         }));
@@ -3793,13 +4677,17 @@
             else oaNotice(wrap, name + '在' + desk.place + '上学。OA 只管上班的事，上学请假以后再接入。');
         } else {
             wrap.appendChild(oaBrand(data, desk));
+            var run = oaRun(desk);
+            if (run) wrap.appendChild(oaRunCard(run));
             var notices = oaNoticeCard(desk, data.requests);
             if (notices) wrap.appendChild(notices);
-            wrap.appendChild(oaClock(data, desk));
-            wrap.appendChild(oaBoard(desk));
-            wrap.appendChild(oaBossCard(desk));
-            wrap.appendChild(oaTaskCard(desk));
             wrap.appendChild(oaApps(data, desk));
+            wrap.appendChild(oaClock(data, desk));
+            var project = oaProjectCard(data, desk, false);
+            if (project) wrap.appendChild(project);
+            // Nobody above: with a company to run there is nothing to say here.
+            if (desk.boss || !run) wrap.appendChild(oaBossCard(desk));
+            wrap.appendChild(oaTaskCard(desk));
             wrap.appendChild(oaRequestCard(data));
         }
         var family = oaFamilyCard(data);
@@ -4077,6 +4965,974 @@
         return wrap;
     }
 
+    // ---------- 管理台: the company the member runs ----------
+    // Once the member holds the company's top rank with nobody above, the reply service runs the
+    // company with them (lib/company.js): ui/phone/oa/company.cfg is what it shows,
+    // { v, byManager: { <member>: { companyId, company, cash, week, history, morale, staff, requests } } },
+    // and the manager's answers go to ui/phone/saved/oa-mgmt.cfg (phone only):
+    // { v, byId: { <request id>: { decision: approved | rejected, at } }, seen: { <company id>: at } }.
+    var OA_MGMT_KEY = 'oa-mgmt';
+    var OA_MGMT_KEEP = 60;
+    // A request left this many game days lapses (lib/company.js LAPSE_DAYS).
+    var OA_MG_LAPSE = 2;
+    var oaCompany = {};
+    var oaMgmt = { v: 1, byId: {}, seen: {}, pay: {}, offers: {} };
+    var oaMgTab = 'overview';
+    // The executive's colours, set on the element: the light theme's card background would win over a class.
+    var OA_EXEC_BG = 'linear-gradient(135deg, #141E36, #2A3F78)';
+    var OA_MG_KINDS = {
+        leave: { mark: '假', color: '#30D158', yes: '批准', no: '驳回', what: '只记在公司账上，游戏里的排班不变' },
+        raise: { mark: '薪', color: '#BF5AF2', yes: '批准', no: '驳回', what: '日薪涨 10%，记在公司账上' },
+        promote: { mark: '升', color: '#FF9F0A', yes: '批准', no: '驳回', what: '批准后游戏里会真的升一级' },
+        resign: { mark: '离', color: '#8E8E93', yes: '同意', no: '挽留', what: '同意后 TA 会在游戏里离开公司' },
+        // The game seated someone in an empty seat (lib/company.js): kept, or let go.
+        hire: { mark: '新', color: '#64D2FF', yes: '留用', no: '辞退', what: '游戏安排进来的新人，还在试用期；辞退后 TA 会在游戏里离开公司，空出的工位过几天会再来人',
+            done: { approved: '已留用', rejected: '已辞退' } },
+        // Someone the game took out of the company without the manager (lib/company.js gone): call back, or let be.
+        gone: { mark: '走', color: '#FF453A', yes: '召回', no: '就这样吧', what: '这次离开没经过你审批。召回会让 TA 重新入职（需要有空的入门工位，从入门职级重新开始，薪酬照旧）',
+            done: { approved: '已召回', rejected: '已确认' } }
+    };
+    var OA_MG_STATUS = {
+        pending: { text: '待审批', cls: 'pill-move' }, approved: { text: '已批准', cls: 'pill-work' },
+        rejected: { text: '已驳回', cls: 'pill-late' }, lapsed: { text: '已过期', cls: 'pill-idle' },
+        sent: { text: '处理中', cls: 'pill-move' }
+    };
+    // Morale bands, best first: the label the service gives, and a colour.
+    var OA_MG_MOODS = [
+        { min: 75, text: '干劲十足', color: '#30D158' }, { min: 55, text: '状态不错', color: '#0A84FF' },
+        { min: 35, text: '有点低落', color: '#FF9F0A' }, { min: -1, text: '想走了', color: '#FF453A' }
+    ];
+
+    function oaMgRead(r) {
+        oaCompany = r && r.byManager && typeof r.byManager === 'object' ? r.byManager : {};
+    }
+
+    function oaMgReadMine(r) {
+        oaMgmt = { v: 1, byId: r && r.byId && typeof r.byId === 'object' ? r.byId : {},
+            seen: r && r.seen && typeof r.seen === 'object' ? r.seen : {},
+            pay: r && r.pay && typeof r.pay === 'object' ? r.pay : {},
+            hiring: r && r.hiring && typeof r.hiring === 'object' ? r.hiring : null,
+            offers: r && r.offers && typeof r.offers === 'object' ? r.offers : {} };
+    }
+
+    // The company the member runs, or null.
+    function oaRun(desk) {
+        if (!desk || desk.error || desk.none || desk.school) return null;
+        var v = oaCompany[desk.memberId];
+        return v && typeof v === 'object' && Array.isArray(v.requests) ? v : null;
+    }
+
+    function oaMoney(n) {
+        n = Math.round(Number(n) || 0);
+        var abs = Math.abs(n);
+        var s = abs >= 10000 ? (Math.round(abs / 1000) / 10) + '万' : String(abs);
+        return (n < 0 ? '-' : '') + s;
+    }
+
+    function oaSigned(n) {
+        return (n > 0 ? '+' : '') + oaMoney(n);
+    }
+
+    function oaMood(morale) {
+        for (var i = 0; i < OA_MG_MOODS.length; i++) if (morale >= OA_MG_MOODS[i].min) return OA_MG_MOODS[i];
+        return OA_MG_MOODS[OA_MG_MOODS.length - 1];
+    }
+
+    function oaMgWaiting(run) {
+        return run.requests.filter(function (r) { return r.status === 'pending' && !oaMgmt.byId[r.id]; });
+    }
+
+    function oaMgSave() {
+        var keys = Object.keys(oaMgmt.byId);
+        if (keys.length > OA_MGMT_KEEP) {
+            keys.sort(function (a, b) { return (oaMgmt.byId[a].at || 0) - (oaMgmt.byId[b].at || 0); })
+                .slice(0, keys.length - OA_MGMT_KEEP).forEach(function (k) { delete oaMgmt.byId[k]; });
+        }
+        return saveJson(OA_MGMT_KEY, oaMgmt, SOUND_SECTION);
+    }
+
+    function oaMgDecide(id, decision) {
+        oaMgmt.byId[id] = { decision: decision, at: Date.now() };
+        oaMgSave().then(refresh, function () {
+            delete oaMgmt.byId[id];
+            setNote('没保存上，再试一次。', true);
+        });
+    }
+
+    // The appointment is shown as news until the 管理台 was opened once.
+    function oaMgSeen(run) {
+        if (oaMgmt.seen[run.companyId]) return;
+        oaMgmt.seen[run.companyId] = Date.now();
+        oaMgSave();
+    }
+
+    // On the workbench: the appointment, then the company at a glance.
+    function oaRunCard(run) {
+        var seen = !!oaMgmt.seen[run.companyId];
+        var waiting = oaMgWaiting(run).length;
+        var c = node('div', 'ph-card oa-exec' + (seen ? '' : ' fresh'));
+        c.style.background = OA_EXEC_BG;
+        var head = c.appendChild(node('div', 'ph-row'));
+        var title = head.appendChild(node('div', 'ph-who'));
+        title.appendChild(node('div', 'oa-exec-kicker', seen ? '管理台' : '任命通知'));
+        title.appendChild(node('div', 'oa-exec-title', seen ? run.company : '你已出任「' + run.company + '」最高负责人'));
+        if (waiting) head.appendChild(node('span', 'oa-exec-badge', waiting + ' 待审批'));
+        if (!seen) c.appendChild(node('div', 'oa-exec-sub', '员工的申请从今天起由你审批，公司的经营也由你负责。'));
+        var kpis = node('div', 'oa-hero-kpis');
+        kpis.appendChild(oaHeroKpi(oaMoney(run.cash), '公司现金', run.cash < 0));
+        kpis.appendChild(oaHeroKpi(oaSigned(run.week.profit), '近 7 天利润', run.week.profit < 0));
+        kpis.appendChild(oaHeroKpi(String(run.morale), '团队士气', run.morale < 40));
+        c.appendChild(kpis);
+        c.appendChild(node('div', 'oa-exec-go', '进入管理台 ›'));
+        onTap(c, function (e) {
+            e.stopPropagation();
+            open('oaManage');
+        });
+        return c;
+    }
+
+    function oaStaffOf(desk, id) {
+        for (var i = 0; i < desk.team.length; i++) if (desk.team[i].id === String(id)) return desk.team[i];
+        return null;
+    }
+
+    // A face for whoever asked: their photo when they are on the team list, else their initial.
+    function oaMgFace(desk, r) {
+        var who = oaStaffOf(desk, r.from);
+        return faceAvatar(who ? who.person : { entity_id: r.from, first_name: (r.fromName || '员').slice(-2) });
+    }
+
+    function oaMgName(desk, r) {
+        var who = oaStaffOf(desk, r.from);
+        return who ? fullName(who.person) : r.fromName || '员工';
+    }
+
+    function oaMgTag(kind, text) {
+        var t = node('span', 'oa-tagchip', text);
+        t.style.background = oaTint(kind.color, 0.16);
+        t.style.color = kind.color;
+        return t;
+    }
+
+    // ----- 今日任务: the day's tasks and how they go (lib/workplan.js, run.plan) -----
+    function oaPlanAsk() {
+        oaMgmt.planOpen = { at: Date.now() };
+        oaMgSave().then(function () {
+            setNote('已在游戏里打开「今日工作安排」窗口。', false);
+        }, function () { setNote('没发出去，再试一次。', true); });
+    }
+
+    // Whether the person has any task today, in any slot.
+    function oaPlanAny(p) {
+        return (p.slots || []).some(function (s) { return (s.tasks || []).length; });
+    }
+
+    // Whether the slot's work went into the game's own work quest (lib/workplan.js syncQuests).
+    var OA_QUEST = {
+        sent: { text: '已排进游戏：下次派任务时换成这些', cls: 'move' }, set: { text: '已替换游戏工作任务', cls: 'good' },
+        done: { text: '已替换游戏工作任务', cls: 'good' }, failed: { text: '没能写入游戏任务', cls: 'bad' },
+        waiting: { text: '重启游戏后写入任务', cls: 'idle' }
+    };
+
+    function oaPlanStatus(p, now, slots) {
+        if (!oaPlanAny(p)) return { text: '自由安排', cls: 'pill-idle' };
+        if (p.done) return { text: '已完成', cls: 'pill-work' };
+        if (p.away) return { text: '不在公司', cls: 'pill-idle' };
+        var started = slots.length && now !== null && now >= slots[0].from;
+        if (!started) return { text: '未开始', cls: 'pill-idle' };
+        if (p.on > 0 && p.on >= p.off) return { text: '进行中', cls: 'oa-pill-info' };
+        return { text: '没在做', cls: 'pill-move' };
+    }
+
+    function oaMgPlanCard(data, desk, run) {
+        var plan = run.plan;
+        if (!plan || !(plan.tasks || []).length) return null;
+        var c = card('今日任务 · 第 ' + plan.day + ' 天');
+        var env = data.env || {};
+        var now = typeof env.hour === 'number' ? env.hour * 60 + (env.minute || 0) : null;
+        var slots = plan.slots || [];
+        if (!plan.decided) {
+            c.appendChild(node('div', 'oa-empty', plan.asked ? '今天的安排窗口已经弹出过，还没有确定。没安排的话，大家按自己的节奏工作。'
+                : '上班前游戏里会弹出「今日工作安排」窗口，让你给每个人（包括你自己）安排今天的工作。'));
+        } else {
+            var ids = Object.keys(plan.people || {});
+            ids.sort(function (a, b) { return (a === desk.memberId ? -1 : 0) - (b === desk.memberId ? -1 : 0); });
+            if (!ids.length) c.appendChild(node('div', 'oa-empty', '今天没给任何人安排任务，大家按自己的节奏工作。'));
+            ids.forEach(function (id) {
+                var p = plan.people[id];
+                var who = id === desk.memberId ? { person: data.member, me: true } : oaStaffOf(desk, id);
+                if (!who) return;
+                var row = c.appendChild(node('div', 'ph-row oa-staff oa-plan-row'));
+                row.appendChild(faceAvatar(who.person));
+                var w = row.appendChild(node('div', 'ph-who'));
+                var line = w.appendChild(node('div', 'oa-staff-name'));
+                line.appendChild(node('span', null, who.me ? '我' : fullName(who.person)));
+                (p.slots || []).forEach(function (s, si) {
+                    if (!(s.tasks || []).length) return;
+                    var sl = w.appendChild(node('div', 'oa-plan-slot'));
+                    var slotNow = slots[si] || null;
+                    var slotTarget = s.target || 0;
+                    var slotPct = slotTarget ? Math.min(100, Math.round((s.minutes || 0) / slotTarget * 100)) : 0;
+                    var slotLive = slotNow && now !== null && now >= slotNow.from && now < slotNow.to;
+                    var slotState = s.minutes >= slotTarget && slotTarget ? '已完成' : slotLive ? '进行中' : now !== null && slotNow && now < slotNow.from ? '未开始' : '未达标';
+                    var slotHead = sl.appendChild(node('div', 'oa-plan-slot-head'));
+                    slotHead.appendChild(node('span', 'oa-plan-slot-label', (s.label || '') + (slotNow ? ' ' + minutesToLabel(slotNow.from) + '–' + minutesToLabel(slotNow.to) : '')));
+                    slotHead.appendChild(node('span', 'oa-plan-slot-state ' + (slotState === '已完成' ? 'good' : slotState === '进行中' ? 'move' : ''), slotState));
+                    sl.appendChild(node('span', 'oa-plan-slot-tasks', s.tasks.map(function (t) {
+                        return (t.tierName ? t.tierName + '·' : '') + t.name + (t.done ? ' ×' + t.done : '') + (t.minutes ? ' ' + t.minutes + '分' : '');
+                    }).join('、')));
+                    var slotTrack = sl.appendChild(node('div', 'oa-plan-slot-track'));
+                    var slotFill = slotTrack.appendChild(node('div', 'oa-plan-slot-fill'));
+                    slotFill.style.width = Math.max(slotPct ? 3 : 0, slotPct) + '%';
+                    slotFill.style.background = slotState === '已完成' ? '#30D158' : '#0A84FF';
+                    sl.appendChild(node('span', 'oa-plan-slot-meta', (s.minutes || 0) + ' / ' + slotTarget + ' 分钟' + (s.other ? ' · 其他工作 ' + s.other + ' 分钟' : '')));
+                    var q = OA_QUEST[s.quest];
+                    if (q) w.appendChild(node('div', 'oa-plan-quest ' + q.cls, (s.label || '') + '：' + q.text));
+                });
+                if (oaPlanAny(p)) {
+                    var track = w.appendChild(node('div', 'oa-staff-track oa-plan-track'));
+                    var fill = track.appendChild(node('div', 'oa-staff-fill'));
+                    var pct = p.target ? Math.min(100, Math.round(p.on / p.target * 100)) : 0;
+                    fill.style.width = Math.max(pct ? 3 : 0, pct) + '%';
+                    fill.style.background = p.done ? '#30D158' : '#0A84FF';
+                    w.appendChild(node('div', 'oa-staff-sub', '专心做了 ' + p.on + ' / ' + p.target + ' 分钟' +
+                        (p.other ? ' · 别的工作 ' + p.other + ' 分钟' : '') + (p.points ? ' · 项目 +' + p.points + ' 点' : '') +
+                        (p.bonus ? '（其中任务奖励 +' + p.bonus + '）' : '')));
+                } else {
+                    w.appendChild(node('div', 'oa-staff-sub', '没有指定任务' + (p.points ? ' · 项目 +' + p.points + ' 点' : '')));
+                }
+                var st = oaPlanStatus(p, now, slots);
+                row.appendChild(node('span', 'ph-pill ' + st.cls, st.text));
+            });
+        }
+        var acts = c.appendChild(node('div', 'oa-ap-actions'));
+        var btn = acts.appendChild(node('div', 'oa-ap-btn primary', plan.decided ? '调整今天的安排' : '打开安排窗口'));
+        onTap(btn, function (e) { e.stopPropagation(); oaPlanAsk(); });
+        c.appendChild(node('div', 'oa-foot', '安排窗口会在游戏里弹出（不在手机上）。上午、下午分开安排；每个时段开始后，安排的工作会替换游戏随机给的「工作」任务。任务分初级、中级、高级：越难要求技能越高，每完成一次给项目加的点也越多（3 / 6 / 10）。专心做满上班时间的六成就算完成，完成的人士气会涨一点。'));
+        return c;
+    }
+
+    // ----- 概览 -----
+
+    function oaMgTile(label, value, sub, tone) {
+        var t = node('div', 'oa-tile');
+        t.appendChild(node('div', 'oa-tile-label', label));
+        t.appendChild(node('div', 'oa-tile-val' + (tone ? ' ' + tone : ''), value));
+        if (sub) t.appendChild(node('div', 'oa-tile-sub', sub));
+        return t;
+    }
+
+    function oaMgChart(run) {
+        var box = node('div', 'oa-chart');
+        var days = run.history.slice(-7);
+        var max = 1;
+        days.forEach(function (h) { max = Math.max(max, h.revenue || 0, h.payroll || 0); });
+        days.forEach(function (h, i) {
+            var col = box.appendChild(node('div', 'oa-chart-col' + (i === days.length - 1 ? ' last' : '')));
+            var bars = col.appendChild(node('div', 'oa-chart-bars'));
+            bars.appendChild(node('div', 'oa-chart-bar in')).style.height = Math.max(3, Math.round((h.revenue || 0) / max * 72)) + 'px';
+            bars.appendChild(node('div', 'oa-chart-bar out')).style.height = Math.max(3, Math.round((h.payroll || 0) / max * 72)) + 'px';
+            col.appendChild(node('div', 'oa-chart-day', String(h.day)));
+        });
+        return box;
+    }
+
+    function oaMgLegend(items) {
+        var l = node('div', 'oa-legend');
+        items.forEach(function (x) {
+            var i = l.appendChild(node('span', 'oa-legend-item'));
+            i.appendChild(node('span', 'oa-legend-dot')).style.background = x[1];
+            i.appendChild(node('span', null, x[0]));
+        });
+        return l;
+    }
+
+    function oaMgOverview(wrap, data, desk, run) {
+        var today = oaMgPlanCard(data, desk, run);
+        if (today) { today.className += ' oa-mg-section oa-mg-task-section'; wrap.appendChild(today); }
+        var guide = card('公司经营');
+        guide.className += ' oa-mg-section oa-mg-money-section';
+        guide.appendChild(node('div', 'oa-business-line', '现金 = 上期现金 + 员工日常收入 − 工资支出 + 项目回款'));
+        var todayRevenue = run.today && typeof run.today.revenue === 'number' ? run.today.revenue : 0;
+        var todayPayroll = run.today && typeof run.today.payroll === 'number' ? run.today.payroll : 0;
+        var todayNet = todayRevenue - todayPayroll;
+        var guideRows = guide.appendChild(node('div', 'oa-business-rows'));
+        [['今天日常收入', oaMoney(todayRevenue)], ['今天工资支出', oaMoney(todayPayroll)], ['今天净变化', oaSigned(todayNet)],
+            ['近 7 天项目回款', oaMoney(run.week.project || 0)]].forEach(function (x) {
+            var row = guideRows.appendChild(node('div', 'oa-business-row'));
+            row.appendChild(node('span', null, x[0]));
+            row.appendChild(node('strong', x[1].charAt(0) === '-' ? 'bad' : '', x[1]));
+        });
+        var current = run.project;
+        if (current && current.total) {
+            var project = guide.appendChild(node('div', 'oa-business-project'));
+            project.appendChild(node('div', 'oa-business-project-title', '当前项目：' + current.title));
+            project.appendChild(node('div', 'oa-business-project-sub', current.current + ' / ' + current.total + ' 点 · 达标后公司回款 ' + oaMoney(current.income)));
+            var track = project.appendChild(node('div', 'oa-staff-track'));
+            var fill = track.appendChild(node('div', 'oa-staff-fill'));
+            fill.style.width = Math.min(100, Math.round(current.current / current.total * 100)) + '%';
+            fill.style.background = '#0A84FF';
+        }
+        guide.appendChild(node('div', 'oa-foot', '员工工作先产生项目点数；项目达到目标点数才算完成并回款，未达标不会产生项目收入。公司现金和家庭余额分开计算。'));
+        wrap.appendChild(guide);
+        var w = run.week;
+        var c = card('经营概况');
+        c.className += ' oa-mg-section oa-mg-money-section';
+        var r1 = c.appendChild(node('div', 'oa-tiles'));
+        r1.appendChild(oaMgTile('近 7 天日常收入', oaMoney(w.revenue - (w.project || 0)), w.days ? '不含项目回款' : ''));
+        r1.appendChild(oaMgTile('近 7 天项目回款', oaMoney(w.project || 0), '达标项目才计入'));
+        r1.appendChild(oaMgTile('近 7 天工资', oaMoney(w.payroll), w.days ? '日均 ' + oaMoney(w.payroll / w.days) : ''));
+        var r2 = c.appendChild(node('div', 'oa-tiles'));
+        r2.appendChild(oaMgTile('近 7 天利润', oaSigned(w.profit), '收入 − 工资', w.profit < 0 ? 'bad' : w.profit > 0 ? 'good' : ''));
+        r2.appendChild(oaMgTile('利润率', w.revenue ? Math.round(w.profit / w.revenue * 100) + '%' : '-', '利润 ÷ 收入'));
+        wrap.appendChild(c);
+
+        var trend = card('收支走势');
+        trend.className += ' oa-mg-section oa-mg-trend-section';
+        if (run.history.length) {
+            trend.appendChild(oaMgLegend([['收入', '#30D158'], ['工资', '#8E8E93']]));
+            trend.appendChild(oaMgChart(run));
+        } else {
+            trend.appendChild(node('div', 'oa-empty', '过了今天就有第一天的数据。'));
+        }
+        wrap.appendChild(trend);
+
+        var team = card('团队状态');
+        team.className += ' oa-mg-section oa-mg-team-section';
+        var head = team.appendChild(node('div', 'oa-team-head'));
+        var mood = oaMood(run.morale);
+        head.appendChild(node('span', 'oa-team-num', String(run.morale)));
+        head.appendChild(node('span', 'oa-team-label', '平均士气 · ' + mood.text));
+        var counts = OA_MG_MOODS.map(function () { return 0; });
+        var ids = Object.keys(run.staff || {});
+        ids.forEach(function (id) { counts[OA_MG_MOODS.indexOf(oaMood(run.staff[id].morale))]++; });
+        if (ids.length) {
+            var stack = team.appendChild(node('div', 'oa-stack'));
+            OA_MG_MOODS.forEach(function (m, i) {
+                if (!counts[i]) return;
+                var seg = stack.appendChild(node('div', 'oa-stack-seg'));
+                seg.style.width = (counts[i] / ids.length * 100) + '%';
+                seg.style.background = m.color;
+            });
+            team.appendChild(oaMgLegend(OA_MG_MOODS.map(function (m, i) { return [m.text + ' ' + counts[i], m.color]; })));
+        }
+        team.appendChild(node('div', 'oa-foot', '团队项目是公司的主要收入；员工绩效越好、士气越高，日常收入也越多。公司的账不进家里的钱包。'));
+        wrap.appendChild(team);
+    }
+
+    // ----- 项目 -----
+
+    function oaMgProjects(wrap, data, desk, run) {
+        var p = desk.project;
+        var card1 = oaProjectCard(data, desk, true);
+        if (card1) {
+            var income = run.project && run.project.id === p.id ? run.project.income : p.reward * 2;
+            if (income) {
+                var pay = node('div', 'oa-pj-pay');
+                pay.appendChild(node('span', null, '按时完成，公司进账'));
+                pay.appendChild(node('span', 'oa-pj-pay-num', '+' + oaMoney(income)));
+                card1.insertBefore(pay, card1.lastChild);
+            }
+            wrap.appendChild(card1);
+        } else {
+            var none = card('当前项目');
+            none.appendChild(node('div', 'oa-empty', '公司现在没有进行中的团队项目，下一个项目会由游戏分派。'));
+            wrap.appendChild(none);
+        }
+        var log = (run.projectLog || []).slice().reverse();
+        var past = card('项目记录');
+        if (!log.length) past.appendChild(node('div', 'oa-empty', '你上任以后完成的项目会记在这里。'));
+        log.forEach(function (x) {
+            var row = past.appendChild(node('div', 'ph-row oa-hist'));
+            row.appendChild(oaMark(x.done ? '成' : '败', x.done ? '#30D158' : '#FF453A', 'oa-req-mark'));
+            var who = row.appendChild(node('div', 'ph-who'));
+            who.appendChild(node('div', 'oa-req-title', x.title));
+            who.appendChild(node('div', 'oa-hist-sub', [typeof x.day === 'number' ? '第 ' + x.day + ' 天' : '', x.current + ' / ' + x.total + ' 点'].filter(Boolean).join(' · ')));
+            row.appendChild(node('span', 'oa-pj-income' + (x.done ? '' : ' none'), x.done ? '+' + oaMoney(x.income) : '未完成'));
+        });
+        wrap.appendChild(past);
+        var list = run.catalogue || [];
+        if (list.length) {
+            var lib = card('公司项目库 · ' + list.length);
+            list.forEach(function (x) {
+                var row = lib.appendChild(node('div', 'ph-row oa-hist'));
+                var who = row.appendChild(node('div', 'ph-who'));
+                who.appendChild(node('div', 'oa-req-title', x.title));
+                who.appendChild(node('div', 'oa-hist-sub', '工期 ' + x.days + ' 天 · ' + x.total + ' 点'));
+                if (p && p.id === x.id) row.appendChild(node('span', 'ph-pill oa-pill-info', '进行中'));
+                else row.appendChild(node('span', 'oa-pj-income', '+' + oaMoney(x.income)));
+            });
+            lib.appendChild(node('div', 'oa-foot', '项目由游戏按公司分派。工期越长、点数越多，回款越高。'));
+            wrap.appendChild(lib);
+        }
+    }
+
+    // ----- 审批 -----
+
+    function oaMgApproval(data, desk, r) {
+        var kind = OA_MG_KINDS[r.kind] || OA_MG_KINDS.leave;
+        var who = oaStaffOf(desk, r.from);
+        var box = node('div', 'oa-ap');
+        var head = box.appendChild(node('div', 'ph-row'));
+        head.appendChild(oaMgFace(desk, r));
+        var name = head.appendChild(node('div', 'ph-who'));
+        name.appendChild(node('div', 'oa-ap-name', oaMgName(desk, r)));
+        name.appendChild(node('div', 'oa-ap-meta', [who && who.rankName, typeof r.day === 'number' ? '第 ' + r.day + ' 天提交' : ''].filter(Boolean).join(' · ')));
+        head.appendChild(oaMgTag(kind, r.label + (r.days ? ' ' + r.days + ' 天' : '')));
+        box.appendChild(node('div', 'oa-ap-quote', r.reason));
+        if (r.kind === 'hire' && who) {
+            var cv = box.appendChild(node('div', 'oa-cv'));
+            [['职级', who.rankName || '第 ' + who.rank + ' 级'], ['绩效', oaGrade(who.evaluation || 0).g + ' · ' + (who.evaluation || 0)],
+                ['日薪', String(oaBaseWage(desk, who.rank))], ['出勤', who.attendance + ' 天']].forEach(function (x) {
+                var cell = cv.appendChild(node('div', 'oa-cv-cell'));
+                cell.appendChild(node('div', 'oa-cv-val', x[1]));
+                cell.appendChild(node('div', 'oa-cv-label', x[0]));
+            });
+        }
+        var today = data.env && typeof data.env.day === 'number' ? data.env.day : null;
+        var left = today !== null && typeof r.day === 'number' ? r.day + OA_MG_LAPSE - today : null;
+        box.appendChild(node('div', 'oa-ap-note', kind.what + (left !== null && left <= 1 ? ' · 今天不处理就过期' : '')));
+        var id = r.id;
+        if (r.status === 'pending' && !oaMgmt.byId[id]) {
+            var actions = box.appendChild(node('div', 'oa-ap-actions'));
+            var no = actions.appendChild(node('div', 'oa-ap-btn', kind.no));
+            var yes = actions.appendChild(node('div', 'oa-ap-btn primary', kind.yes));
+            onTap(no, function (e) { e.stopPropagation(); oaMgDecide(id, 'rejected'); });
+            onTap(yes, function (e) { e.stopPropagation(); oaMgDecide(id, 'approved'); });
+        } else {
+            box.appendChild(node('div', 'oa-ap-sent', '已提交，等系统办理…'));
+        }
+        return box;
+    }
+
+    function oaMgHistoryRow(desk, r) {
+        var kind = OA_MG_KINDS[r.kind] || OA_MG_KINDS.leave;
+        var row = node('div', 'ph-row oa-hist');
+        row.appendChild(oaMark(kind.mark, kind.color, 'oa-req-mark'));
+        var who = row.appendChild(node('div', 'ph-who'));
+        who.appendChild(node('div', 'oa-req-title', oaMgName(desk, r) + ' · ' + r.label + (r.days ? ' ' + r.days + ' 天' : '')));
+        var sub = r.effect && r.effect.text ? r.effect.text : r.reason;
+        who.appendChild(node('div', 'oa-hist-sub' + (r.effect && OA_EFFECT[r.effect.state] ? ' ' + OA_EFFECT[r.effect.state] : ''), sub));
+        var st = OA_MG_STATUS[r.status] || OA_MG_STATUS.pending;
+        if (kind.done && kind.done[r.status]) st = { text: kind.done[r.status], cls: st.cls };
+        row.appendChild(node('span', 'ph-pill ' + st.cls, st.text));
+        return row;
+    }
+
+    function oaMgApprovals(wrap, data, desk, run) {
+        var waiting = run.requests.filter(function (r) { return r.status === 'pending'; }).slice().reverse();
+        var c = card('待审批');
+        if (!waiting.length) c.appendChild(node('div', 'oa-empty', '没有待处理的申请。员工会不时来请假、谈加薪、要晋升，或者提出离职。'));
+        waiting.forEach(function (r) { c.appendChild(oaMgApproval(data, desk, r)); });
+        wrap.appendChild(c);
+        var done = run.requests.filter(function (r) { return r.status !== 'pending'; }).slice(-8).reverse();
+        if (done.length) {
+            var past = card('已处理');
+            done.forEach(function (r) { past.appendChild(oaMgHistoryRow(desk, r)); });
+            wrap.appendChild(past);
+        }
+    }
+
+    // ----- 员工 -----
+
+    function oaMgStaffRow(data, desk, run, t) {
+        var st = run.staff[t.id] || null;
+        var row = node('div', 'ph-row oa-staff');
+        row.appendChild(faceAvatar(t.person));
+        var who = row.appendChild(node('div', 'ph-who'));
+        var line = who.appendChild(node('div', 'oa-staff-name'));
+        line.appendChild(node('span', null, fullName(t.person)));
+        if (st && Math.abs((st.pay || 1) - 1) > 0.005) line.appendChild(node('span', 'oa-staff-pay', '薪 ' + Math.round(st.pay * 100) + '%'));
+        if (st && oaPayPlanned(run, t.id) !== null) line.appendChild(node('span', 'oa-staff-pay next', '明日调薪'));
+        if (st && st.probation) line.appendChild(node('span', 'oa-staff-pay trial', '试用'));
+        who.appendChild(node('div', 'oa-staff-sub', (t.rankName || '第 ' + t.rank + ' 级') + ' · 绩效 ' + oaGrade(t.evaluation || 0).g + ' · 出勤 ' + t.attendance + ' 天'));
+        if (st) {
+            var m = oaMood(st.morale);
+            var side = row.appendChild(node('div', 'oa-staff-mood'));
+            var label = side.appendChild(node('div', 'oa-staff-mood-text', m.text));
+            label.style.color = m.color;
+            var track = side.appendChild(node('div', 'oa-staff-track'));
+            var fill = track.appendChild(node('div', 'oa-staff-fill'));
+            fill.style.width = Math.max(4, Math.min(100, st.morale)) + '%';
+            fill.style.background = m.color;
+        }
+        onTap(row, function (e) {
+            e.stopPropagation();
+            oaOpenStaff(t.id);
+        });
+        return row;
+    }
+
+    // Whether the game may fill empty seats: the one just set here, else the service's.
+    function oaAutoHire(run) {
+        var mine = oaMgmt.hiring;
+        return mine && typeof mine.auto === 'boolean' ? mine.auto : run.autoHire !== false;
+    }
+
+    function oaMgHiring(run) {
+        var on = oaAutoHire(run);
+        var c = card();
+        var row = c.appendChild(node('div', 'ph-row oa-switch-row'));
+        var who = row.appendChild(node('div', 'ph-who'));
+        who.appendChild(node('div', 'oa-ap-name', '自动补员'));
+        who.appendChild(node('div', 'oa-ap-meta', on ? '工位空了，游戏会从镇上安排新人，由你审批留不留' : '已冻结招聘：游戏安排进来的人会被直接辞退'));
+        var sw = row.appendChild(node('div', 'oa-switch' + (on ? ' on' : '')));
+        sw.appendChild(node('div', 'oa-switch-knob'));
+        onTap(row, function (e) {
+            e.stopPropagation();
+            oaMgmt.hiring = { auto: !on, at: Date.now() };
+            oaMgSave().then(refresh, function () {
+                setNote('没保存上，再试一次。', true);
+            });
+        });
+        return c;
+    }
+
+    function oaMgStaff(wrap, data, desk, run) {
+        wrap.appendChild(oaMgHiring(run));
+        var c = card('团队成员 · ' + desk.team.length + ' 人');
+        if (!desk.team.length) c.appendChild(node('div', 'oa-empty', desk.readable ? '公司里只有你一个人。' : '公司的人员名单读不到。'));
+        desk.team.forEach(function (t) { c.appendChild(oaMgStaffRow(data, desk, run, t)); });
+        if (desk.team.length) c.appendChild(node('div', 'oa-foot', '点成员可以看详情、调整薪酬或发消息。'));
+        wrap.appendChild(c);
+    }
+
+    // ----- one employee: their state and their pay -----
+    // The manager sets pay as a share of the rank's wage (oa-mgmt.cfg pay: { <id>: { to, at } });
+    // the service starts it the next game day (lib/company.js).
+    var oaStaffId = null;
+    var oaPayDraft = null;
+    var OA_PAY_STEP = 5;
+    var OA_PAY_ANSWER = { text: 'TA 私聊回应了', group: 'TA 在公司群里道了谢', none: 'TA 没有说什么', missed: 'TA 没有说什么', waiting: '等 TA 回应' };
+
+    function oaOpenStaff(id) {
+        oaStaffId = String(id);
+        oaPayDraft = null;
+        open('oaStaff');
+    }
+
+    function oaBaseWage(desk, rank) {
+        for (var i = 0; i < desk.ladder.length; i++) if (desk.ladder[i].rank === rank) return desk.ladder[i].salary;
+        return 0;
+    }
+
+    // The pay due next: the one just set here, else the service's plan, else none.
+    function oaPayPlanned(run, id) {
+        var mine = oaMgmt.pay[id];
+        var st = run.staff[id] || {};
+        if (mine && !(Number(st.plannedAt) >= Number(mine.at))) {
+            return Math.abs(Number(mine.to) - (st.pay || 1)) < 0.005 ? null : Number(mine.to);
+        }
+        return typeof st.planned === 'number' ? st.planned : null;
+    }
+
+    function oaPaySave(id, to) {
+        oaMgmt.pay[id] = { to: Math.round(to * 10000) / 10000, at: Date.now() };
+        oaMgSave().then(function () {
+            oaPayDraft = null;
+            refresh();
+        }, function () { setNote('没保存上，再试一次。', true); });
+    }
+
+    function oaMeter(label, value, color) {
+        var box = node('div', 'oa-meter');
+        var head = box.appendChild(node('div', 'oa-meter-head'));
+        head.appendChild(node('span', null, label));
+        head.appendChild(node('span', 'oa-meter-num', String(value)));
+        var track = box.appendChild(node('div', 'oa-staff-track'));
+        var fill = track.appendChild(node('div', 'oa-staff-fill'));
+        fill.style.width = Math.max(3, Math.min(100, value)) + '%';
+        fill.style.background = color;
+        return box;
+    }
+
+    // A daily wage to set, as a share of a base wage: − and + by OA_PAY_STEP, or typed in.
+    // The page keeps its values in ed (a global it fills on every render): a redraw keeps the old
+    // buttons (morph), so a handler must read the value as it is now, not the one it was drawn with.
+    var oaWageTyped = {};
+
+    function oaWageEditor(ed) {
+        var box = node('div', 'oa-wage');
+        var stepper = box.appendChild(node('div', 'oa-pay-stepper'));
+        var minus = stepper.appendChild(node('div', 'oa-step-btn' + (ed.draft > ed.lo ? '' : ' off'), '−'));
+        var mid = stepper.appendChild(node('div', 'oa-pay-mid'));
+        mid.appendChild(node('div', 'oa-pay-pct', Math.round(ed.draft * 10) / 10 + '%'));
+        mid.appendChild(node('div', 'oa-pay-wage', '日薪 ' + Math.round(ed.base * ed.draft / 100)));
+        var plus = stepper.appendChild(node('div', 'oa-step-btn' + (ed.draft < ed.hi ? '' : ' off'), '+'));
+        var step = function (by) {
+            var v = ed.view();
+            var next = Math.max(v.lo, Math.min(v.hi, v.draft + by));
+            if (next === v.draft) return;
+            delete oaWageTyped[v.key];
+            v.set(next);
+        };
+        onTap(minus, function (e) { e.stopPropagation(); step(-OA_PAY_STEP); });
+        onTap(plus, function (e) { e.stopPropagation(); step(OA_PAY_STEP); });
+        var row = box.appendChild(node('div', 'oa-wage-row'));
+        row.appendChild(node('span', 'oa-wage-label', '日薪'));
+        var input = row.appendChild(node('input', 'oa-wage-input'));
+        input.id = 'oa-wage-' + ed.key;
+        applyUiFont(input);
+        input.setAttribute('maxlength', '6');
+        input.setAttribute('placeholder', String(Math.round(ed.base * ed.draft / 100)));
+        input.value = oaWageTyped[ed.key] !== undefined ? oaWageTyped[ed.key] : String(Math.round(ed.base * ed.draft / 100));
+        input.addEventListener('input', function () { oaWageTyped[ed.view().key] = input.value; });
+        var apply = function () {
+            var v = ed.view();
+            // The box on the page now: a redraw may have put a new one in place of this one.
+            var box = document.getElementById('oa-wage-' + v.key) || input;
+            var w = parseInt(String(box.value || '').replace(/[^0-9]/g, ''), 10);
+            delete oaWageTyped[v.key];
+            if (!w || !v.base) { refresh(); return; }
+            // Exactly the wage typed, not rounded to a whole percent.
+            var want = w / v.base * 100;
+            var pct = Math.max(v.lo, Math.min(v.hi, want));
+            if (pct !== want) setNote('日薪只能在 ' + Math.round(v.base * v.lo / 100) + ' 到 ' + Math.round(v.base * v.hi / 100) + ' 之间。', false);
+            v.set(pct);
+        };
+        input.addEventListener('keydown', function (e) {
+            if (e.keyCode === 13 || e.key === 'Enter') {
+                e.preventDefault();
+                apply();
+            }
+        });
+        var set = row.appendChild(node('div', 'oa-wage-set', '设定'));
+        onTap(set, function (e) { e.stopPropagation(); apply(); });
+        box.appendChild(node('div', 'oa-wage-range', '可设 ' + Math.round(ed.base * ed.lo / 100) + ' ~ ' + Math.round(ed.base * ed.hi / 100) + '（基本 ' + ed.base + ' 的 ' + ed.lo + '% ~ ' + ed.hi + '%）'));
+        return box;
+    }
+
+    // What the pay page and the offer page show now (filled on every render).
+    var oaPayView = null;
+    var oaOfferView = null;
+
+    function renderOaStaff(data) {
+        var wrap = node('div', 'oa-screen');
+        wrap.appendChild(subHeader('oaStaff'));
+        var desk = data.desk;
+        var run = oaRun(desk);
+        var t = run ? oaStaffOf(desk, oaStaffId) : null;
+        if (!run || !t) return oaNotice(wrap, '找不到这名员工。');
+        var st = run.staff[t.id] || { morale: 60, loyalty: 60, pay: 1, mood: '' };
+        var mood = oaMood(st.morale);
+
+        var head = card();
+        var row = head.appendChild(node('div', 'ph-row oa-staff-top'));
+        row.appendChild(faceAvatar(t.person));
+        var who = row.appendChild(node('div', 'ph-who'));
+        who.appendChild(node('div', 'oa-ap-name', fullName(t.person)));
+        who.appendChild(node('div', 'oa-ap-meta', (t.rankName || '第 ' + t.rank + ' 级') + ' · 绩效 ' + oaGrade(t.evaluation || 0).g + ' · 出勤 ' + t.attendance + ' 天'));
+        var tag = row.appendChild(node('span', 'oa-tagchip', mood.text));
+        tag.style.background = oaTint(mood.color, 0.16);
+        tag.style.color = mood.color;
+        var meters = head.appendChild(node('div', 'oa-tiles'));
+        meters.appendChild(oaMeter('士气', st.morale, mood.color));
+        meters.appendChild(oaMeter('忠诚', st.loyalty, '#5E5CE6'));
+        if (t.contact && desk.phoneOk) {
+            var talk = head.appendChild(node('div', 'oa-ap-actions')).appendChild(node('div', 'oa-ap-btn', '发消息'));
+            onTap(talk, function (e) {
+                e.stopPropagation();
+                var go = function () { smsContactId = t.id; open('chat'); };
+                addOutside(data.played, t.contact, '下属').then(go, go);
+            });
+        }
+        wrap.appendChild(head);
+
+        var base = oaBaseWage(desk, t.rank);
+        var pay = st.pay || 1;
+        var planned = oaPayPlanned(run, t.id);
+        var range = Array.isArray(run.payRange) ? run.payRange : [0.6, 2];
+        var draft = oaPayDraft !== null ? oaPayDraft : (planned !== null ? planned : pay) * 100;
+        var c = card('薪酬');
+        var now = c.appendChild(node('div', 'oa-pj-nums'));
+        now.appendChild(node('span', 'oa-pj-now', String(Math.round(base * pay))));
+        now.appendChild(node('span', 'oa-pj-total', ' / 天 · 职级基本 ' + base + ' × ' + Math.round(pay * 100) + '%'));
+        if (planned !== null) {
+            var plan = c.appendChild(node('div', 'oa-pay-plan'));
+            plan.appendChild(node('span', null, '已安排：明天起日薪 ' + Math.round(base * planned) + '（' + Math.round(planned * 100) + '%）'));
+            var undo = plan.appendChild(node('span', 'oa-pay-undo', '撤销'));
+            onTap(undo, function (e) { e.stopPropagation(); oaPaySave(t.id, pay); });
+        }
+        var lo = Math.round(range[0] * 100);
+        var hi = Math.round(range[1] * 100);
+        oaPayView = { key: 'pay-' + t.id, id: t.id, base: base, lo: lo, hi: hi, draft: draft, pay: pay,
+            set: function (pct) { oaPayDraft = pct; refresh(); } };
+        oaPayView.view = function () { return oaPayView; };
+        c.appendChild(oaWageEditor(oaPayView));
+        var diff = Math.round(base * draft / 100) - Math.round(base * pay);
+        var pts = Math.abs(draft - pay * 100) < 0.05 ? 0 : draft - pay * 100;
+        var effect = c.appendChild(node('div', 'oa-pay-effect'));
+        if (!pts) effect.appendChild(node('div', null, '和现在一样。'));
+        else {
+            effect.appendChild(node('div', 'oa-pay-cost' + (diff > 0 ? ' up' : ' down'), '公司每天' + (diff > 0 ? '多支出 ' : '少支出 ') + Math.abs(diff) + '，一周 ' + Math.abs(diff * 7)));
+            effect.appendChild(node('div', null, pts > 0 ? '涨薪会提振 TA 的士气和忠诚，以后士气也会稳在更高的位置。'
+                : '降薪对士气和忠诚的打击比涨薪的提振更大，士气太低的人可能会提离职。'));
+        }
+        effect.appendChild(node('div', null, '明天生效，生效当天 TA 会来跟你说说；工资每天从公司现金里扣。'));
+        var same = planned !== null ? Math.abs(draft - planned * 100) < 0.05 : !pts;
+        oaPayView.same = same;
+        var acts = c.appendChild(node('div', 'oa-ap-actions'));
+        var reset = acts.appendChild(node('div', 'oa-ap-btn', '还原'));
+        var ok = acts.appendChild(node('div', 'oa-ap-btn primary' + (same ? ' off' : ''), '确认调整'));
+        onTap(reset, function (e) {
+            e.stopPropagation();
+            if (oaPayView) delete oaWageTyped[oaPayView.key];
+            oaPayDraft = null;
+            refresh();
+        });
+        onTap(ok, function (e) {
+            e.stopPropagation();
+            var v = oaPayView;
+            if (!v || v.same) return;
+            oaPaySave(v.id, v.draft / 100);
+        });
+        c.appendChild(node('div', 'oa-foot', '公司现金 ' + oaMoney(run.cash) + '。'));
+        wrap.appendChild(c);
+
+        var log = (run.payLog || []).filter(function (x) { return x.id === t.id; }).slice().reverse();
+        if (log.length) {
+            var past = card('调薪记录');
+            log.forEach(function (x) {
+                var up = x.to > x.from;
+                var r = past.appendChild(node('div', 'ph-row oa-hist'));
+                r.appendChild(oaMark(up ? '涨' : '降', up ? '#30D158' : '#FF9F0A', 'oa-req-mark'));
+                var w = r.appendChild(node('div', 'ph-who'));
+                w.appendChild(node('div', 'oa-req-title', (x.wageFrom && x.wageTo ? x.wageFrom + ' → ' + x.wageTo : Math.round(x.from * 100) + '% → ' + Math.round(x.to * 100) + '%')));
+                w.appendChild(node('div', 'oa-hist-sub', (typeof x.day === 'number' ? '第 ' + x.day + ' 天起 · ' : '') + (OA_PAY_ANSWER[x.answer] || '')));
+            });
+            wrap.appendChild(past);
+        }
+        return wrap;
+    }
+
+    // ----- 招聘: résumés from town and offers (lib/recruit.js) -----
+    // run.recruit: { vacancy, jobName, pool: [{ id, name, first, gender, age, site, traits, skills,
+    // key, fit, expect, letter, offer }], offers: [{ id, name, pay, expect, status, reply, note }] };
+    // an offer goes in oa-mgmt.cfg offers: { <id>: { pay, at } }.
+    var oaCandId = null;
+    var oaOfferDraft = null;
+    var OA_OFFER_STATUS = {
+        sent: { text: '已发送', cls: 'pill-move' }, pending: { text: '等回复', cls: 'pill-move' },
+        accepted: { text: '已入职', cls: 'pill-work' }, declined: { text: '婉拒了', cls: 'pill-late' },
+        failed: { text: '没办成', cls: 'pill-idle' }
+    };
+
+    function oaRecruitOf(run) {
+        var r = run.recruit || {};
+        return { vacancy: typeof r.vacancy === 'number' ? r.vacancy : null, jobName: r.jobName || '',
+            pool: Array.isArray(r.pool) ? r.pool : [], offers: Array.isArray(r.offers) ? r.offers : [] };
+    }
+
+    // Where an offer to this applicant stands: the service's answer, else one just sent from here.
+    function oaOfferState(a) {
+        var mine = oaMgmt.offers[a.id];
+        var theirs = a.offer;
+        if (mine && !(Number(a.offeredAt) >= Number(mine.at)) && !(theirs && theirs.status === 'pending')) return { status: 'sent', pay: mine.pay };
+        return theirs || null;
+    }
+
+    function oaFitColor(fit) {
+        return fit >= 75 ? '#30D158' : fit >= 50 ? '#0A84FF' : fit >= 30 ? '#FF9F0A' : '#8E8E93';
+    }
+
+    function oaFitBadge(fit) {
+        var b = node('div', 'oa-fit');
+        var color = oaFitColor(fit);
+        b.style.borderColor = color;
+        var n = b.appendChild(node('div', 'oa-fit-num', String(fit)));
+        n.style.color = color;
+        b.appendChild(node('div', 'oa-fit-label', '匹配'));
+        return b;
+    }
+
+    function oaCandFace(a) {
+        return faceAvatar({ entity_id: a.id, first_name: a.first || a.name.slice(-1) });
+    }
+
+    function oaOpenCand(id) {
+        oaCandId = String(id);
+        oaOfferDraft = null;
+        open('oaCand');
+    }
+
+    function oaMgRecruit(wrap, data, desk, run) {
+        var rc = oaRecruitOf(run);
+        var head = card('招聘');
+        var seats = head.appendChild(node('div', 'oa-pj-nums'));
+        seats.appendChild(node('span', 'oa-pj-now', rc.vacancy === null ? '-' : String(rc.vacancy)));
+        seats.appendChild(node('span', 'oa-pj-total', ' 个空着的入门工位' + (rc.jobName ? ' · ' + rc.jobName : '')));
+        head.appendChild(node('div', 'oa-pay-effect', '新人从入门职级入职，只能坐入门工位：工位满了就招不进来（以免把现有员工挤出公司）。每天都会有镇上没工作的人投来简历，几天没回音就会另谋出路。发 offer 时自己定日薪：给得越接近 TA 的期望，越可能答应。' +
+            (oaAutoHire(run) ? '「自动补员」开着，游戏也会往空位安排人；想全由自己招，可以在「员工」页关掉。' : '')));
+        wrap.appendChild(head);
+
+        var list = card('求职者 · ' + rc.pool.length);
+        if (!rc.pool.length) list.appendChild(node('div', 'oa-empty', '今天还没有人投简历，明天再来看看。'));
+        rc.pool.forEach(function (a) {
+            var row = list.appendChild(node('div', 'ph-row oa-staff'));
+            row.appendChild(oaCandFace(a));
+            var who = row.appendChild(node('div', 'ph-who'));
+            var line = who.appendChild(node('div', 'oa-staff-name'));
+            line.appendChild(node('span', null, a.name));
+            var st = oaOfferState(a);
+            if (st && OA_OFFER_STATUS[st.status]) line.appendChild(node('span', 'oa-staff-pay next', OA_OFFER_STATUS[st.status].text));
+            who.appendChild(node('div', 'oa-staff-sub', [a.gender, a.age, a.key ? a.key.name + ' ' + a.key.level + ' 级' : '',
+                a.skills && a.skills[0] && (!a.key || a.skills[0].id !== a.key.id) ? a.skills[0].name + ' ' + a.skills[0].level + ' 级' : ''].filter(Boolean).join(' · ')));
+            row.appendChild(oaFitBadge(a.fit || 0));
+            onTap(row, function (e) {
+                e.stopPropagation();
+                oaOpenCand(a.id);
+            });
+        });
+        wrap.appendChild(list);
+
+        var sent = rc.offers.filter(function (o) { return o.status !== 'pending'; }).slice().reverse();
+        if (sent.length) {
+            var past = card('Offer 记录');
+            sent.forEach(function (o) {
+                var row = past.appendChild(node('div', 'ph-row oa-hist'));
+                var who = row.appendChild(node('div', 'ph-who'));
+                who.appendChild(node('div', 'oa-req-title', o.name + ' · 日薪 ' + Math.round(o.pay * 100) + '%'));
+                who.appendChild(node('div', 'oa-hist-sub', o.reply ? '「' + o.reply + '」' : o.note || ''));
+                var st = OA_OFFER_STATUS[o.status] || OA_OFFER_STATUS.pending;
+                row.appendChild(node('span', 'ph-pill ' + st.cls, st.text));
+            });
+            wrap.appendChild(past);
+        }
+    }
+
+    function oaSkillRow(s, key) {
+        var row = node('div', 'oa-skill' + (key ? ' key' : ''));
+        row.appendChild(node('div', 'oa-skill-name', s.name));
+        var track = row.appendChild(node('div', 'oa-pj-mini'));
+        var fill = track.appendChild(node('div', 'oa-pj-mini-fill'));
+        fill.style.width = Math.round(Math.max(0, Math.min(10, s.level)) * 10) + '%';
+        fill.style.background = key ? '#FF9F0A' : '#5E5CE6';
+        row.appendChild(node('div', 'oa-skill-lv', s.level + ' 级'));
+        return row;
+    }
+
+    function oaOfferChance(pay, expect) {
+        var gap = pay - expect;
+        if (gap >= 0.1) return { text: '很可能答应', color: '#30D158' };
+        if (gap >= 0) return { text: '有希望', color: '#0A84FF' };
+        if (gap >= -0.1) return { text: '有点悬', color: '#FF9F0A' };
+        return { text: '多半会拒', color: '#FF453A' };
+    }
+
+    function renderOaCand(data) {
+        var wrap = node('div', 'oa-screen');
+        wrap.appendChild(subHeader('oaCand'));
+        var desk = data.desk;
+        var run = oaRun(desk);
+        var rc = run ? oaRecruitOf(run) : null;
+        var a = null;
+        if (rc) rc.pool.forEach(function (x) { if (x.id === oaCandId) a = x; });
+        if (!a) return oaNotice(wrap, '这份简历已经撤下了。');
+
+        var head = card();
+        var row = head.appendChild(node('div', 'ph-row oa-staff-top'));
+        row.appendChild(oaCandFace(a));
+        var who = row.appendChild(node('div', 'ph-who'));
+        who.appendChild(node('div', 'oa-ap-name', a.name));
+        who.appendChild(node('div', 'oa-ap-meta', [a.gender, a.age, a.married ? '已婚' : '', a.site ? '在' + a.site : ''].filter(Boolean).join(' · ')));
+        row.appendChild(oaFitBadge(a.fit || 0));
+        if (a.traits && a.traits.length) {
+            var chips = head.appendChild(node('div', 'oa-cand-traits'));
+            a.traits.forEach(function (t) { chips.appendChild(node('span', 'oa-trait', t)); });
+        }
+        head.appendChild(node('div', 'oa-ap-quote', a.letter));
+        wrap.appendChild(head);
+
+        var skills = card('能力');
+        (a.skills || []).forEach(function (s) { skills.appendChild(oaSkillRow(s, a.key && s.id === a.key.id)); });
+        if (!(a.skills || []).length) skills.appendChild(node('div', 'oa-empty', '没有练过什么技能。'));
+        if (a.key) skills.appendChild(node('div', 'oa-foot', '橙色是公司团队项目用到的「' + a.key.name + '」，它最影响匹配度。'));
+        wrap.appendChild(skills);
+
+        var base = oaBaseWage(desk, 1);
+        var st = oaOfferState(a);
+        var c = card('发 Offer');
+        var draft = oaOfferDraft !== null ? oaOfferDraft : Math.round((a.expect || 1) * 100);
+        var hope = c.appendChild(node('div', 'oa-pj-nums'));
+        hope.appendChild(node('span', 'oa-pj-now', String(Math.round(base * (a.expect || 1)))));
+        hope.appendChild(node('span', 'oa-pj-total', ' / 天 · TA 的期望（入门职级基本 ' + base + ' 的 ' + Math.round((a.expect || 1) * 100) + '%）'));
+        var waiting = st && (st.status === 'sent' || st.status === 'pending');
+        if (st && st.status && !waiting) {
+            var said = c.appendChild(node('div', 'oa-pay-plan'));
+            said.appendChild(node('span', null, (OA_OFFER_STATUS[st.status] || {}).text + (st.reply ? '：「' + st.reply + '」' : st.note ? '：' + st.note : '')));
+        }
+        if (waiting) {
+            c.appendChild(node('div', 'oa-pay-plan')).appendChild(node('span', null, '已发出日薪 ' + Math.round(base * st.pay) + '（' + Math.round(st.pay * 100) + '%）的 offer，等 TA 回复…'));
+        } else {
+            oaOfferView = { key: 'offer-' + a.id, id: a.id, base: base, lo: 60, hi: 200, draft: draft,
+                set: function (pct) { oaOfferDraft = pct; refresh(); } };
+            oaOfferView.view = function () { return oaOfferView; };
+            c.appendChild(oaWageEditor(oaOfferView));
+            var chance = oaOfferChance(draft / 100, a.expect || 1);
+            var hint = c.appendChild(node('div', 'oa-pay-effect'));
+            hint.appendChild(node('div', 'oa-pay-cost')).appendChild(node('span', null, chance.text)).style.color = chance.color;
+            hint.appendChild(node('div', null, '答应后 TA 会在游戏里入职「' + (rc.jobName || '入门职位') + '」，从第一天起按这个日薪从公司现金里发工资。'));
+            var full = rc.vacancy === 0;
+            var acts = c.appendChild(node('div', 'oa-ap-actions'));
+            oaOfferView.blocked = full || !!(st && st.status === 'accepted');
+            var send = acts.appendChild(node('div', 'oa-ap-btn primary' + (oaOfferView.blocked ? ' off' : ''), full ? '没有空缺工位' : '发送 Offer'));
+            onTap(send, function (e) {
+                e.stopPropagation();
+                var v = oaOfferView;
+                if (!v || v.blocked) return;
+                oaMgmt.offers[v.id] = { pay: v.draft / 100, at: Date.now() };
+                oaMgSave().then(function () {
+                    delete oaWageTyped[v.key];
+                    oaOfferDraft = null;
+                    refresh();
+                }, function () { setNote('没发出去，再试一次。', true); });
+            });
+        }
+        wrap.appendChild(c);
+        return wrap;
+    }
+
+    // ----- the page -----
+
+    function oaMgHead(desk, run) {
+        var c = node('div', 'ph-card oa-mg-head');
+        c.style.background = OA_EXEC_BG;
+        c.appendChild(node('div', 'oa-exec-kicker', '管理台 · ' + desk.rankName));
+        c.appendChild(node('div', 'oa-mg-company', run.company));
+        var money = c.appendChild(node('div', 'oa-mg-money'));
+        money.appendChild(node('span', 'oa-mg-cash', oaMoney(run.cash)));
+        money.appendChild(node('span', 'oa-mg-cash-label', '公司现金'));
+        money.appendChild(node('span', 'oa-mg-delta' + (run.week.profit < 0 ? ' bad' : ''), '近 7 天 ' + oaSigned(run.week.profit)));
+        c.appendChild(node('div', 'oa-mg-since', desk.team.length + ' 名员工' + (typeof run.appointedDay === 'number' ? ' · 第 ' + run.appointedDay + ' 天上任' : '')));
+        var waiting = oaMgWaiting(run).length;
+        var seg = c.appendChild(node('div', 'oa-seg'));
+        [['overview', '概览'], ['projects', '项目'], ['approvals', waiting ? '审批 ' + waiting : '审批'], ['staff', '员工'], ['recruit', '招聘']].forEach(function (x) {
+            var item = seg.appendChild(node('div', 'oa-seg-item' + (oaMgTab === x[0] ? ' on' : ''), x[1]));
+            onTap(item, function (e) {
+                e.stopPropagation();
+                if (oaMgTab === x[0]) return;
+                oaMgTab = x[0];
+                refresh();
+            });
+        });
+        return c;
+    }
+
+    function renderOaManage(data) {
+        var wrap = node('div', 'oa-screen oa-mg-page');
+        wrap.appendChild(subHeader('oaManage'));
+        var desk = data.desk;
+        var run = oaRun(desk);
+        if (!run) return oaNotice(wrap, '只有在公司里职级最高、上面没有别人的时候，才能管理公司。');
+        oaMgSeen(run);
+        wrap.appendChild(oaMgHead(desk, run));
+        if (oaMgTab === 'approvals') oaMgApprovals(wrap, data, desk, run);
+        else if (oaMgTab === 'staff') oaMgStaff(wrap, data, desk, run);
+        else if (oaMgTab === 'projects') oaMgProjects(wrap, data, desk, run);
+        else if (oaMgTab === 'recruit') oaMgRecruit(wrap, data, desk, run);
+        else oaMgOverview(wrap, data, desk, run);
+        return wrap;
+    }
     // ------------------------------------------------------------------
     // Time
     // ------------------------------------------------------------------
@@ -5055,7 +6911,10 @@
     function smsVoiceClean(raw) {
         if (!raw || typeof raw.id !== 'string' || !/^[a-f0-9]{16}$/.test(raw.id)) return null;
         var seconds = Number(raw.seconds);
-        return isFinite(seconds) && seconds > 0 && seconds < 600 ? { id: raw.id, seconds: seconds } : null;
+        if (!(isFinite(seconds) && seconds > 0 && seconds < 600)) return null;
+        // of: the text this voice reads out (lib/voicenotes.js); it is drawn inside that bubble.
+        var of = typeof raw.of === 'string' && /^h-\d+-\d+$/.test(raw.of) ? raw.of : '';
+        return of ? { id: raw.id, seconds: seconds, of: of } : { id: raw.id, seconds: seconds };
     }
 
     function cleanList(raw) {
@@ -5137,7 +6996,7 @@
         if (Date.now() - smsClearingAt > 120000) {
             smsClearingAt = 0;
             smsClearAsk = false;
-            setNote('Could not clear texts. Is the reply service running?', true);
+            setNote(L('Could not clear texts. Is the reply service running?'), true);
             return Promise.resolve();
         }
         return cfgValue(SMS_SECTION, 'cleared').then(function (v) {
@@ -5149,7 +7008,7 @@
                 smsPhotos = {};
                 smsPhotoPending = null;
                 syncSmsPhotoComposer();
-                setNote('Texts cleared.', false);
+                setNote(L('Texts cleared.'), false);
                 bannerAt = {};
                 bannerReady = {};
                 clearBannerQueue();
@@ -5162,7 +7021,7 @@
         smsClearAsk = false;
         smsClearingAt = Date.now();
         smsRenderedKey = '';
-        setNote('Clearing...', false);
+        setNote(L('Clearing...'), false);
         saveJson('clear', { at: smsClearingAt }, SMS_SECTION).then(function () {
             refresh();
         }, function (err) {
@@ -5175,18 +7034,18 @@
     function clearTools() {
         var row = node('div', 'sms-tools');
         if (smsClearingAt) {
-            row.appendChild(node('div', 'sms-tool-note', 'Clearing all texts...'));
+            row.appendChild(node('div', 'sms-tool-note', L('Clearing all texts...')));
             return row;
         }
         if (smsClearAsk) {
-            row.appendChild(node('div', 'sms-tool-note', 'Clear all texts and group chats?'));
-            var yes = node('button', 'sms-tool warn', 'Clear');
+            row.appendChild(node('div', 'sms-tool-note', L('Clear all texts and group chats?')));
+            var yes = node('button', 'sms-tool warn', L('Clear'));
             yes.type = 'button';
             onTap(yes, function (e) {
                 e.stopPropagation();
                 requestClear();
             });
-            var no = node('button', 'sms-tool', 'Cancel');
+            var no = node('button', 'sms-tool', L('Cancel'));
             no.type = 'button';
             onTap(no, function (e) {
                 e.stopPropagation();
@@ -5198,7 +7057,7 @@
             row.appendChild(no);
             return row;
         }
-        var btn = node('button', 'sms-tool', 'Clear');
+        var btn = node('button', 'sms-tool', L('Clear'));
         btn.type = 'button';
         onTap(btn, function (e) {
             e.stopPropagation();
@@ -5439,7 +7298,7 @@
         if (txFoldersRead[key]) return write();
         return readTxFolders(key).then(function (v) {
             if (!v) {
-                setNote('分组暂时存不进去，稍后再改一次。', true);
+                setNote(L('分组暂时存不进去，稍后再改一次。'), true);
                 return;
             }
             txFoldersRead[key] = true;
@@ -5507,10 +7366,10 @@
             });
             row.appendChild(c);
         };
-        chip(TX_ALL, '全部');
+        chip(TX_ALL, L('全部'));
         f.folders.forEach(function (x) { chip(x.id, x.name); });
-        if (f.folders.length && chats.some(function (c) { return !txFolderOfKey(f, c.key); })) chip(TX_NONE, '未分组');
-        var edit = node('div', 'tx-chip tx-chip-edit', f.folders.length ? '管理' : '+ 分组');
+        if (f.folders.length && chats.some(function (c) { return !txFolderOfKey(f, c.key); })) chip(TX_NONE, L('未分组'));
+        var edit = node('div', 'tx-chip tx-chip-edit', f.folders.length ? L('管理') : L('+ 分组'));
         onTap(edit, function (e) {
             e.stopPropagation();
             // The Manage page reads what the list reads: it opens on the list's data at once, and
@@ -5577,13 +7436,13 @@
         wrap.appendChild(subHeader('textsFolders', '聊天分组'));
         var f = txFoldersOf(data.meId);
         var fc = card('分组');
-        if (!f.folders.length) fc.appendChild(node('div', 'ph-caption', '还没有分组。可以自己建，也可以一键按家人、同学、工作、朋友分好。'));
+        if (!f.folders.length) fc.appendChild(node('div', 'ph-caption', L('还没有分组。可以自己建，也可以一键按家人、同学、工作、朋友分好。')));
         f.folders.forEach(function (x) {
             var r = node('div', 'tx-frow');
             var name = txNameField(x.name, '', function (v) { v = txCleanName(v); if (v) x.name = v; });
             name.addEventListener('blur', function () { saveTxFolders(data.meId); });
             r.appendChild(name);
-            var del = node('div', 'tx-fbtn warn', '删除');
+            var del = node('div', 'tx-fbtn warn', L('删除'));
             onTap(del, function (e) {
                 e.stopPropagation();
                 f.folders = f.folders.filter(function (y) { return y.id !== x.id; });
@@ -5598,12 +7457,12 @@
         if (f.folders.length < TX_FOLDERS_MAX) {
             var addRow = node('div', 'tx-frow');
             addRow.appendChild(txNameField(txNewName, '新分组名称', function (v) { txNewName = v; }));
-            var add = node('div', 'tx-fbtn on', '添加');
+            var add = node('div', 'tx-fbtn on', L('添加'));
             onTap(add, function (e) {
                 e.stopPropagation();
                 var v = txCleanName(txNewName);
-                if (!v) { setNote('先写分组名称。', true); return; }
-                if (f.folders.some(function (y) { return y.name === v; })) { setNote('已经有叫「' + v + '」的分组了。', true); return; }
+                if (!v) { setNote(L('先写分组名称。'), true); return; }
+                if (f.folders.some(function (y) { return y.name === v; })) { setNote(L('已经有叫「{name}」的分组了。', { name: v }), true); return; }
                 f.folders.push({ id: 'f' + Date.now().toString(36), name: v });
                 txNewName = '';
                 setNote('', false);
@@ -5634,7 +7493,7 @@
             var m = row.member;
             rows.push({ key: 'c:' + m.entity_id, name: fullName(m), face: function () { var p = node('div', 'sms-pic'); p.appendChild(faceAvatar(m)); return p; } });
         });
-        if (!rows.length) ac.appendChild(node('div', 'ph-empty', '还没有聊天。'));
+        if (!rows.length) ac.appendChild(node('div', 'ph-empty', L('还没有聊天。')));
         rows.forEach(function (item) {
             var r = node('div', 'tx-arow');
             var top = node('div', 'ph-row');
@@ -5679,7 +7538,7 @@
         line.appendChild(pic);
         var who = node('div', 'ph-who');
         who.appendChild(node('div', 'ph-name', fullName(rec.contact)));
-        who.appendChild(node('div', 'ph-sub', '想加你为好友'));
+        who.appendChild(node('div', 'ph-sub', L('想加你为好友')));
         line.appendChild(who);
         c.appendChild(line);
         if (rec.note) c.appendChild(node('div', 'sms-suitor-note', '“' + rec.note + '”'));
@@ -5748,6 +7607,7 @@
         }).then(function (v) {
             if (!v || v.v !== 1 || String(v.player) !== String(meId) || typeof v.at !== 'number') return null;
             if (Math.abs(Date.now() - v.at) > SMS_INDEX_FRESH_MS) return null;
+            smsServiceSeen(v.at);
             if (!v.threads || typeof v.threads !== 'object' || !v.groups || typeof v.groups !== 'object') return null;
             return v;
         }, function () { return null; });
@@ -5802,18 +7662,31 @@
     }
 
     // Presence of the reply service, from status.cfg and its heartbeat age.
+    // When the reply service was last seen running (the Texts index it writes every few seconds,
+    // its daemon.cfg heartbeat). A contact never texted has no status file of its own, and after
+    // a move to another city the game gives the whole family new ids, so nobody has one: they
+    // are online while the service runs, not "Offline".
+    var smsServiceSeenAt = 0;
+
+    function smsServiceSeen(at) {
+        if (typeof at === 'number' && at > smsServiceSeenAt && at <= Date.now() + 5000) smsServiceSeenAt = at;
+    }
+
     function presence(status) {
+        if (!status && Date.now() - smsServiceSeenAt <= BRIDGE_STALE_MS) {
+            return { cls: 'on', text: L('Online'), fresh: false, typing: false };
+        }
         if (!status || typeof status.heartbeat !== 'number' || Date.now() - status.heartbeat > BRIDGE_STALE_MS) {
-            return { cls: 'off', text: 'Offline', fresh: false, typing: false };
+            return { cls: 'off', text: L('Offline'), fresh: false, typing: false };
         }
         var s = status.state;
-        if (s === 'typing') return { cls: 'typing', text: 'Typing...', fresh: true, typing: true };
-        if (s === 'reading') return { cls: 'on', text: 'Reading...', fresh: true, typing: false };
-        if (s === 'waiting') return { cls: 'off', text: 'Connecting...', fresh: true, typing: false };
-        if (s === 'paused') return { cls: 'off', text: 'Auto replies off', fresh: true, typing: false };
-        if (s === 'offline') return { cls: 'off', text: 'Offline', fresh: false, typing: false };
-        if (s === 'error') return { cls: 'err', text: status.error || 'Reply service error', fresh: true, typing: false };
-        return { cls: 'on', text: 'Online', fresh: true, typing: false };
+        if (s === 'typing') return { cls: 'typing', text: L('Typing...'), fresh: true, typing: true };
+        if (s === 'reading') return { cls: 'on', text: L('Reading...'), fresh: true, typing: false };
+        if (s === 'waiting') return { cls: 'off', text: L('Connecting...'), fresh: true, typing: false };
+        if (s === 'paused') return { cls: 'off', text: L('Auto replies off'), fresh: true, typing: false };
+        if (s === 'offline') return { cls: 'off', text: L('Offline'), fresh: false, typing: false };
+        if (s === 'error') return { cls: 'err', text: status.error || L('Reply service error'), fresh: true, typing: false };
+        return { cls: 'on', text: L('Online'), fresh: true, typing: false };
     }
 
     function receiptText(data) {
@@ -5823,8 +7696,8 @@
         if (last.side !== 'mine') return '';
         var st = data.status;
         var p = presence(st);
-        if (st && typeof st.readAt === 'number' && st.readAt >= last.at && p.fresh) return 'Read';
-        return p.fresh ? 'Delivered' : 'Sent';
+        if (st && typeof st.readAt === 'number' && st.readAt >= last.at && p.fresh) return L('Read');
+        return p.fresh ? L('Delivered') : L('Sent');
     }
 
     // hold: a full redraw follows and will glide the log itself, so the typing row only
@@ -5985,7 +7858,7 @@
     function smsNotice(text, arriving, delay) {
         var line = node('div', 'sms-notice' + (arriving ? ' sms-in' : ''));
         line.appendChild(node('span', 'sms-notice-text', text));
-        line.appendChild(node('span', 'sms-notice-go', '查看 \u203A'));
+        line.appendChild(node('span', 'sms-notice-go', L('查看 \u203A')));
         if (arriving) setSmsDelay(line, delay);
         onTap(line, function (e) {
             e.stopPropagation();
@@ -6024,7 +7897,7 @@
     function heartText(status) {
         var h = status && status.heart;
         if (!h || typeof h !== 'object' || !(h.clues > 0)) return '';
-        return h.soon ? '好像有心事 · 这两天就有结果' : '好像有心事';
+        return h.soon ? L('好像有心事 · 这两天就有结果') : L('好像有心事');
     }
 
     // A photo keeps its aspect ratio and shares the bubble with an optional caption. The
@@ -6050,7 +7923,7 @@
         });
         img.addEventListener('error', function () {
             img.style.display = 'none';
-            frame.appendChild(node('span', 'sms-photo-missing', 'Photo unavailable'));
+            frame.appendChild(node('span', 'sms-photo-missing', L('Photo unavailable')));
         });
         frame.appendChild(img);
         bubble.appendChild(frame);
@@ -6078,28 +7951,80 @@
         bubble.appendChild(wave);
         bubble.appendChild(node('span', 'sms-voice-len', secs + '″'));
         bubble.addEventListener('click', function () { smsVoicePlay(voice); });
-        smsVoiceLoad(voice);
         return bubble;
+    }
+
+    // A voice that reads out a text it follows: a small play chip at the end of that text's
+    // bubble instead of a bubble of its own, so a reply reads once and can be heard from where
+    // it is written. Same play, stop and playing marks as a voice bubble (class sms-voice).
+    function smsVoiceChip(voice, arriving) {
+        var secs = Math.max(1, Math.round(voice.seconds));
+        var chip = node('span', 'sms-voice sms-voice-chip' + (arriving ? ' sms-chip-in' : '') + (smsVoiceNow && smsVoiceNow.id === voice.id ? ' playing' : ''));
+        chip._voiceId = voice.id;
+        var wave = node('span', 'sms-voice-wave');
+        for (var i = 1; i <= 3; i++) wave.appendChild(node('span', 'sms-voice-bar b' + i));
+        chip.appendChild(wave);
+        chip.appendChild(node('span', 'sms-voice-len', secs + '″'));
+        chip.addEventListener('click', function (e) {
+            e.stopPropagation();
+            smsVoicePlay(voice);
+        });
+        return chip;
+    }
+
+    // The voices in a thread that read out one of its texts: { text id: { voice, arriving } }.
+    // Ids in a thread can carry a prefix; the voice names the bare id.
+    function smsVoicesOf(list, known) {
+        var byId = {};
+        var out = {};
+        var i;
+        for (i = 0; i < list.length; i++) {
+            if (!list[i].voice && list[i].side === 'theirs') byId[smsBareId(list[i].id)] = list[i].id;
+        }
+        for (i = 0; i < list.length; i++) {
+            var v = list[i].voice;
+            var target = v && v.of ? byId[v.of] : null;
+            if (target && !out[target]) out[target] = { voice: v, msgId: list[i].id, arriving: !!(known && !known[list[i].id]) };
+        }
+        return out;
+    }
+
+    function smsBareId(id) {
+        var at = String(id).indexOf('h-');
+        return at > 0 ? String(id).slice(at) : String(id);
     }
 
     function smsVoiceMark(id, on) {
         var list = document.getElementsByClassName('sms-voice');
         for (var i = 0; i < list.length; i++) {
             if (list[i]._voiceId !== id) continue;
-            list[i].className = 'sms-bubble sms-voice' + (on ? ' playing' : '');
+            var cls = list[i].className.replace(/\s*\bplaying\b/g, '');
+            list[i].className = on ? cls + ' playing' : cls;
         }
     }
 
     // Like the phone's sounds, a clip is made and left loading in the island before it is wanted
-    // (when its bubble is drawn) and is rewound and played on a tap: a <video> made on the tap
-    // reports playing but stays silent. The newest few are kept.
-    var SMS_VOICE_KEEP = 6;
+    // and is rewound and played on a tap: a <video> made and played on the tap reports playing
+    // but stays silent. Which clips are loaded follows the open thread, not the drawing: the
+    // newest SMS_VOICE_KEEP voices are, and that set changes only when a voice arrives. (Loading
+    // whatever was drawn, with a few kept, made and dropped players on every redraw once a thread
+    // had more voices than that, now and then dropping the one playing; the game's sound as a
+    // whole went silent after a while of it.) An older voice tapped is loaded then, played once
+    // it can be, and kept among at most SMS_VOICE_MAX; the one playing is never dropped.
+    var SMS_VOICE_KEEP = 4;
+    var SMS_VOICE_MAX = 8;
     var smsVoiceMedia = [];
 
-    function smsVoiceLoad(voice) {
+    function smsVoiceFind(id) {
         for (var i = 0; i < smsVoiceMedia.length; i++) {
-            if (smsVoiceMedia[i].id === voice.id) return smsVoiceMedia[i].media;
+            if (smsVoiceMedia[i].id === id) return smsVoiceMedia[i].media;
         }
+        return null;
+    }
+
+    function smsVoiceLoad(voice, keep) {
+        var have = smsVoiceFind(voice.id);
+        if (have) return have;
         var m = document.createElement('video');
         m.setAttribute('preload', 'auto');
         m.setAttribute('width', '16');
@@ -6113,12 +8038,31 @@
         });
         soundHostEl().appendChild(m);
         smsVoiceMedia.push({ id: voice.id, media: m });
-        while (smsVoiceMedia.length > SMS_VOICE_KEEP) {
-            var old = smsVoiceMedia.shift();
-            if (smsVoiceNow && smsVoiceNow.id === old.id) smsVoiceStop();
-            soundDrop(old.media);
-        }
+        smsVoiceTrim(keep || {});
         return m;
+    }
+
+    // Past SMS_VOICE_MAX, the oldest loaded go that are neither wanted nor playing.
+    function smsVoiceTrim(keep) {
+        for (var i = 0; i < smsVoiceMedia.length && smsVoiceMedia.length > SMS_VOICE_MAX;) {
+            var it = smsVoiceMedia[i];
+            if (keep[it.id] || (smsVoiceNow && smsVoiceNow.id === it.id)) {
+                i++;
+                continue;
+            }
+            smsVoiceMedia.splice(i, 1);
+            soundDrop(it.media);
+        }
+    }
+
+    // The open thread's newest voices, loaded ahead of a tap.
+    function smsVoicePreload(list) {
+        var voices = [];
+        for (var i = 0; i < list.length; i++) if (list[i].voice) voices.push(list[i].voice);
+        voices = voices.slice(-SMS_VOICE_KEEP);
+        var keep = {};
+        for (var j = 0; j < voices.length; j++) keep[voices[j].id] = true;
+        for (var k = 0; k < voices.length; k++) smsVoiceLoad(voices[k], keep);
     }
 
     function smsVoiceStop() {
@@ -6135,20 +8079,31 @@
         smsVoiceStop();
         if (again) return;
         var m = smsVoiceLoad(voice);
-        try {
-            m.volume = Math.max(0, Math.min(1, soundSettings.volume / 100 * soundGame));
-            m.currentTime = 0;
-        } catch (e) {}
         var cur = { id: voice.id, media: m, timer: 0 };
         smsVoiceNow = cur;
         smsVoiceMark(voice.id, true);
-        traceLoad('voice ' + voice.id + ' tap, ready ' + m.readyState + ' volume ' + m.volume + ' (sound ' + soundState + ')');
-        // The engine may play without ever firing ended, so the clip's length stops it too.
-        cur.timer = setTimeout(function () { if (smsVoiceNow === cur) smsVoiceStop(); }, (voice.seconds + 1.5) * 1000);
-        soundStart(m);
-        setTimeout(function () {
-            traceLoad('voice ' + voice.id + ' +1000ms ready ' + m.readyState + ' at ' + (m.currentTime || 0) + ' paused ' + m.paused);
-        }, 1000);
+        traceLoad('voice ' + voice.id + ' tap, ready ' + m.readyState + ' (sound ' + soundState + ')');
+        var started = false;
+        function go() {
+            if (started || smsVoiceNow !== cur) return;
+            started = true;
+            try {
+                m.volume = Math.max(0, Math.min(1, soundSettings.volume / 100 * soundGame));
+                m.currentTime = 0;
+            } catch (e) {}
+            // The engine may play without ever firing ended, so the clip's length stops it too.
+            cur.timer = setTimeout(function () { if (smsVoiceNow === cur) smsVoiceStop(); }, (voice.seconds + 1.5) * 1000);
+            soundStart(m);
+            setTimeout(function () {
+                traceLoad('voice ' + voice.id + ' +1000ms ready ' + m.readyState + ' at ' + (m.currentTime || 0) + ' paused ' + m.paused);
+            }, 1000);
+        }
+        // An older voice loaded on the tap plays once it can (see above); a loaded one at once.
+        if (m.readyState >= 3) go();
+        else {
+            m.addEventListener('canplaythrough', go);
+            setTimeout(go, 1500);
+        }
     }
 
     function smsInsertEmoji(name) {
@@ -6232,13 +8187,13 @@
         if (!g) return '';
         var hm = minutesToLabel(g.min);
         var today = env && typeof env.day === 'number' ? env.day : null;
-        if (today === null) return 'Day ' + g.day + ' ' + hm;
+        if (today === null) return L('Day {d} {t}', { d: g.day, t: hm });
         var ago = today - g.day;
-        if (ago === 0) return 'Today ' + hm;
-        if (ago === 1) return 'Yesterday ' + hm;
+        if (ago === 0) return L('Today {t}', { t: hm });
+        if (ago === 1) return L('Yesterday {t}', { t: hm });
         var dow = SMS_WEEKDAYS.indexOf(env.day_of_week);
-        if (ago > 1 && ago < 7 && dow >= 0) return SMS_WEEKDAYS[((dow - ago) % 7 + 7) % 7] + ' ' + hm;
-        return 'Day ' + g.day + ' ' + hm;
+        if (ago > 1 && ago < 7 && dow >= 0) return L(SMS_WEEKDAYS[((dow - ago) % 7 + 7) % 7]) + ' ' + hm;
+        return L('Day {d} {t}', { d: g.day, t: hm });
     }
 
     // Whether a time line goes above m. Only messages that know their game time get one.
@@ -6267,12 +8222,12 @@
 
     function pickSmsPhoto() {
         if (!smsThread || smsSending || smsClearingAt) return;
-        if (smsPhotoPending) {
-            setNote('Finish choosing the photo on the PC first.', false);
+        if (smsPhotoPending || moPhotoPending) {
+            setNote(L('Finish choosing the photo on the PC first.'), false);
             return;
         }
         if (aiPending || wallPending) {
-            setNote('Another phone service request is still running. Try again in a moment.', false);
+            setNote(L('Another phone service request is still running. Try again in a moment.'), false);
             return;
         }
         var section = smsThread;
@@ -6280,11 +8235,11 @@
             aiService = v && typeof v === 'object' ? v : null;
             if (smsThread !== section) return;
             if (!aiAlive(aiService)) {
-                setNote('Adding photos needs AI Phone Service running on this PC.', true);
+                setNote(L('Adding photos needs AI Phone Service running on this PC.'), true);
                 return;
             }
             if (!aiTakesRequests(aiService)) {
-                setNote(AI_NO_GUARDIAN, true);
+                setNote(L(AI_NO_GUARDIAN), true);
                 return;
             }
             smsSeq += 1;
@@ -6299,10 +8254,10 @@
             }, function (err) {
                 smsPhotoPending = null;
                 syncSmsPhotoComposer();
-                setNote('Could not open the photo picker: ' + errText(err), true);
+                setNote(L('Could not open the photo picker: {why}', { why: errText(err) }), true);
             });
         }, function (err) {
-            setNote('Could not reach AI Phone Service: ' + errText(err), true);
+            setNote(L('Could not reach AI Phone Service: {why}', { why: errText(err) }), true);
         });
     }
 
@@ -6334,7 +8289,7 @@
             if (Date.now() - asked.at > SMS_PHOTO_PICK_MS) {
                 smsPhotoPending = null;
                 syncSmsPhotoComposer();
-                if (smsThread === asked.section) setNote('No answer from AI Phone Service. Check that it is running on this PC.', true);
+                if (smsThread === asked.section) setNote(L('No answer from AI Phone Service. Check that it is running on this PC.'), true);
             }
             return;
         }
@@ -6358,14 +8313,14 @@
         var photo = smsThread && smsPhotos[smsThread] ? smsPhotos[smsThread] : null;
         if (pick) {
             pick.className = 'sms-photo-btn' + (waiting ? ' waiting' : '') + (smsPhotoPending || smsSending ? ' off' : '');
-            pick.setAttribute('title', waiting ? 'Choosing a photo on the PC' : 'Add photo');
+            pick.setAttribute('title', waiting ? L('Choosing a photo on the PC') : L('Add photo'));
         }
         if (preview) {
             while (preview.firstChild) preview.removeChild(preview.firstChild);
             if (waiting) {
                 preview.style.display = 'flex';
                 preview.appendChild(node('span', 'sms-photo-spinner'));
-                preview.appendChild(node('span', 'sms-photo-wait', 'Choose a photo on your PC. If covered by the game, press Alt+Tab.'));
+                preview.appendChild(node('span', 'sms-photo-wait', L('Choose a photo on your PC. If covered by the game, press Alt+Tab.')));
             } else if (photo) {
                 preview.style.display = 'flex';
                 var thumb = node('img', 'sms-photo-thumb');
@@ -6373,12 +8328,12 @@
                 thumb.setAttribute('alt', 'Selected photo');
                 preview.appendChild(thumb);
                 var meta = node('div', 'sms-photo-meta');
-                meta.appendChild(node('div', 'sms-photo-ready', 'Photo ready'));
+                meta.appendChild(node('div', 'sms-photo-ready', L('Photo ready')));
                 meta.appendChild(node('div', 'sms-photo-size', photo.width + ' × ' + photo.height));
                 preview.appendChild(meta);
                 var remove = node('button', 'sms-photo-remove', '×');
                 remove.type = 'button';
-                remove.setAttribute('title', 'Remove photo');
+                remove.setAttribute('title', L('Remove photo'));
                 var section = smsThread;
                 onTap(remove, function (e) {
                     e.stopPropagation();
@@ -6454,7 +8409,7 @@
     }
 
     function smsEarlierRow(hidden) {
-        var row = node('div', 'sms-earlier', '查看更早的消息（' + hidden + '）');
+        var row = node('div', 'sms-earlier', L('查看更早的消息（{n}）', { n: hidden }));
         row.id = 'sms-earlier';
         onTap(row, function (e) {
             e.stopPropagation();
@@ -6646,7 +8601,7 @@
         var b = node('button', 'sms-jump' + (smsStick ? '' : ' show'));
         b.id = 'sms-jump';
         b.type = 'button';
-        b.setAttribute('title', 'Latest');
+        b.setAttribute('title', L('Latest'));
         var svg = glyphSvg('0 0 24 24');
         svg.setAttribute('class', 'sms-jump-glyph');
         glyphPath(svg, 'M5.3 8.6a1.1 1.1 0 0 1 1.6 0L12 13.7l5.1-5.1a1.1 1.1 0 1 1 1.6 1.6l-5.9 5.9a1.1 1.1 0 0 1-1.6 0L5.3 10.2a1.1 1.1 0 0 1 0-1.6z', '#ffffff');
@@ -6781,7 +8736,7 @@
     function smsPlusButton(action) {
         var btn = node('button', 'sms-plus');
         btn.type = 'button';
-        btn.setAttribute('title', 'New group');
+        btn.setAttribute('title', L('New group'));
         var icon = node('div', 'sms-plus-icon');
         icon.appendChild(node('div', 'sms-np-h'));
         icon.appendChild(node('div', 'sms-np-v'));
@@ -6807,17 +8762,17 @@
             groupListRows(wrap, groupsShown, data.members || [], data.env);
             if (groupsShown.length) wrap.appendChild(node('div', 'ph-group-sep'));
         } catch (e) {
-            setNote('Groups: ' + errText(e), true);
+            setNote(L('Groups: {why}', { why: errText(e) }), true);
         }
         if (shown !== TX_ALL && !groupsShown.length && !contactsShown.length) {
             var emptyFolder = card();
-            emptyFolder.appendChild(node('div', 'ph-empty', '这个分组里还没有聊天。点「管理」把聊天放进来。'));
+            emptyFolder.appendChild(node('div', 'ph-empty', L('这个分组里还没有聊天。点「管理」把聊天放进来。')));
             wrap.appendChild(emptyFolder);
             return wrap;
         }
         if (!data.contacts.length) {
             var none = card();
-            none.appendChild(node('div', 'ph-empty', 'Nobody to text yet. Open Contacts and tap Message on someone.'));
+            none.appendChild(node('div', 'ph-empty', L('Nobody to text yet. Open Contacts and tap Message on someone.')));
             wrap.appendChild(none);
             return wrap;
         }
@@ -6849,11 +8804,11 @@
             var heartLine = p.fresh ? heartText(row.status) : '';
             if (heartLine) sub.appendChild(node('span', 'sms-heart inline', heartLine));
             who.appendChild(sub);
-            var lastText = row.last && row.last.voice ? '[语音]'
+            var lastText = row.last && row.last.voice && !row.last.voice.of ? L('[语音]')
                 : row.last && row.last.image
-                ? (row.last.text === SMS_PHOTO_TEXT ? 'Photo' : 'Photo: ' + row.last.text)
+                ? (row.last.text === SMS_PHOTO_TEXT ? L('Photo') : L('Photo: {text}', { text: row.last.text }))
                 : row.last ? row.last.text : '';
-            var preview = row.last ? (row.last.side === 'mine' ? 'You: ' : '') + lastText : 'No messages yet';
+            var preview = row.last ? (row.last.side === 'mine' ? L('You: ') : '') + lastText : L('No messages yet');
             var previewEl = node('div', 'sms-preview' + (row.unread > 0 ? ' new' : ''));
             emojiFill(previewEl, smsClip(preview, 40));
             who.appendChild(previewEl);
@@ -6924,7 +8879,7 @@
         var photo = smsPhotos[section] || null;
         if (!body && !photo) return;
         if (body.length > SMS_TEXT_MAX) {
-            setNote('Keep it under ' + SMS_TEXT_MAX + ' characters.', true);
+            setNote(L('Keep it under {n} characters.', { n: SMS_TEXT_MAX }), true);
             return;
         }
         smsSending = true;
@@ -6971,24 +8926,24 @@
         if (!data.contact) {
             wrap.appendChild(subHeader('chat'));
             var none = card();
-            none.appendChild(node('div', 'ph-empty', 'This person can no longer be texted.'));
+            none.appendChild(node('div', 'ph-empty', L('This person can no longer be texted.')));
             wrap.appendChild(none);
             return wrap;
         }
         var nav = node('div', 'sms-nav');
-        var back = node('div', 'ph-back', '< Back');
+        var back = node('div', 'ph-back', L('< Back'));
         onTap(back, function (e) {
             e.stopPropagation();
             open(backTarget('chat'));
         });
         nav.appendChild(back);
         var peer = node('div', 'sms-peer');
-        peer.setAttribute('title', 'Edit how ' + (data.contact.first_name || fullName(data.contact)) + ' talks');
+        peer.setAttribute('title', L('Edit how {name} talks', { name: data.contact.first_name || fullName(data.contact) }));
         peer.appendChild(faceAvatar(data.contact));
         peer.appendChild(node('div', 'sms-peer-name', fullName(data.contact) + ' \u203A'));
         var loverWord = loverTag(data.meId, data.contact, smsMembersSeen);
         if (loverWord) peer.appendChild(node('div', 'sms-lover', '\u2665 ' + loverWord));
-        var pres = node('div', 'sms-presence off', 'Offline');
+        var pres = node('div', 'sms-presence off', L('Offline'));
         pres.id = 'sms-presence';
         peer.appendChild(pres);
         onTap(peer, function (e) {
@@ -7025,14 +8980,22 @@
                 !(smsScrollRide && !smsScrollRide.dead) && document.getElementById('sms-earlier')) smsShowEarlier();
         });
         var list = data.messages;
+        // Voices that read out a text are drawn inside its bubble and leave the list; they still
+        // count as seen, so a later redraw does not take them for new.
+        var voicesOf = smsVoicesOf(list, smsArrived);
+        var heard = {};
+        for (var vk in voicesOf) heard[voicesOf[vk].msgId] = true;
+        var kept = [];
+        for (var li = 0; li < list.length; li++) if (!heard[list[li].id]) kept.push(list[li]);
+        list = kept;
         if (data.loading) {
             var wait = node('div', 'sms-loading');
             wait.appendChild(node('div', 'sms-loading-spin'));
-            wait.appendChild(node('div', 'sms-loading-text', '正在载入对话…'));
+            wait.appendChild(node('div', 'sms-loading-text', L('正在载入对话…')));
             wait._k = 'loading';
             log.appendChild(wait);
         } else if (!list.length) {
-            smsKeyed(log, node('div', 'sms-empty', 'No messages yet. Say hi to ' + (data.contact.first_name || fullName(data.contact)) + '.'), 'empty');
+            smsKeyed(log, node('div', 'sms-empty', L('No messages yet. Say hi to {name}.', { name: data.contact.first_name || fullName(data.contact) })), 'empty');
         }
         smsChatData = data;
         if (smsWindow.section !== data.section) smsWindow = { section: data.section, count: SMS_PAGE };
@@ -7040,6 +9003,7 @@
         if (start > 0) smsKeyed(log, smsEarlierRow(start), 'earlier');
         var known = smsArrived;
         var nextSeen = {};
+        for (var hk in heard) nextSeen[hk] = true;
         var freshN = 0;
         for (var i = 0; i < list.length; i++) {
             var m = list[i];
@@ -7067,6 +9031,8 @@
             var joinNext = !!next && next.side === m.side && next.at - m.at < SMS_RUN_GAP_MS && !smsStamped(m, next);
             var row = node('div', 'sms-row ' + (m.side === 'mine' ? 'mine' : 'theirs') + (joinPrev ? ' join' : '') + (joinNext ? '' : ' tail') + (arriving ? ' sms-in' : ''));
             var bubble = smsMessageBubble(m);
+            // A voice that came after its text was drawn fades in on its own.
+            if (voicesOf[m.id]) bubble.appendChild(smsVoiceChip(voicesOf[m.id].voice, voicesOf[m.id].arriving && !arriving));
             if (arriving) setSmsDelay(bubble, delay);
             var time = m.game ? node('div', 'sms-time', smsGameClock(m.game)) : null;
             if (time && m.side === 'mine') row.appendChild(time);
@@ -7077,7 +9043,10 @@
         }
         // The loading shell has no messages yet; what it is filled with first is the thread as it
         // was, not texts that just arrived.
-        if (!data.loading) smsArrived = nextSeen;
+        if (!data.loading) {
+            smsArrived = nextSeen;
+            smsVoicePreload(data.messages);
+        }
         var receipt = node('div', 'sms-receipt', '');
         receipt.id = 'sms-receipt';
         smsKeyed(log, receipt, 'receipt');
@@ -7100,7 +9069,7 @@
         input.id = 'sms-box';
         applyUiFont(input);
         input.setAttribute('maxlength', String(SMS_TEXT_MAX));
-        input.setAttribute('placeholder', 'Message');
+        input.setAttribute('placeholder', L('Message'));
         input.setAttribute('rows', '1');
         input.addEventListener('input', function () {
             smsDraft = input.value;
@@ -7128,7 +9097,7 @@
         var send = node('button', 'sms-send off');
         send.id = 'sms-send';
         send.type = 'button';
-        send.setAttribute('title', 'Send');
+        send.setAttribute('title', L('Send'));
         send.appendChild(sendGlyph());
         onTap(send, function (e) {
             e.stopPropagation();
@@ -7137,7 +9106,7 @@
         var pick = node('button', 'sms-photo-btn');
         pick.id = 'sms-photo';
         pick.type = 'button';
-        pick.setAttribute('title', 'Add photo');
+        pick.setAttribute('title', L('Add photo'));
         pick.appendChild(photoGlyph());
         onTap(pick, function (e) {
             e.stopPropagation();
@@ -7145,7 +9114,7 @@
         }, { silent: true });
         var smile = node('button', 'sms-emoji-btn' + (smsEmojiOpen ? ' on' : ''));
         smile.type = 'button';
-        smile.setAttribute('title', 'Emoji');
+        smile.setAttribute('title', L('Emoji'));
         if (emojiSet) {
             var face = emojiSet.byName['微笑'] || emojiSet.list[0].id;
             smile.appendChild(emojiImg(face, ''));
@@ -7500,7 +9469,7 @@
     function grpName(meta, id) {
         if (meta && meta.memberNames && meta.memberNames[id]) return meta.memberNames[id];
         var p = memberById(grpKnown, id);
-        return p ? (p.first_name || fullName(p)) : 'Someone';
+        return p ? (p.first_name || fullName(p)) : L('Someone');
     }
 
     // A message's speaker as the page shows it: what the service stored, unless that is only an id.
@@ -7583,11 +9552,11 @@
                 if (lg && env) top.appendChild(node('div', 'sms-contact-time', env.day === lg.day ? smsGameClock(lg) : smsStamp(lg, env)));
             }
             who2.appendChild(top);
-            who2.appendChild(node('div', 'ph-sub', meta.members.length + ' people'));
+            who2.appendChild(node('div', 'ph-sub', L('{n} people', { n: meta.members.length })));
             var previewEl = node('div', 'sms-preview' + (row.unread > 0 ? ' new' : ''));
             var line = '';
-            if (row.last) line = (row.last.side === 'mine' ? 'You: ' : (row.last.name ? row.last.name + ': ' : '')) + String(row.last.text || '');
-            emojiFill(previewEl, smsClip(line || 'No messages yet', 40));
+            if (row.last) line = (row.last.side === 'mine' ? L('You: ') : (row.last.name ? row.last.name + ': ' : '')) + String(row.last.text || '');
+            emojiFill(previewEl, smsClip(line || L('No messages yet'), 40));
             who2.appendChild(previewEl);
             row2.appendChild(who2);
             card.appendChild(row2);
@@ -7609,7 +9578,7 @@
         wrap.appendChild(subHeader('groupNew', 'New Group'));
         var nameCard = card();
         var field = node('textarea', 'sms-gname');
-        field.setAttribute('placeholder', 'Group name (optional)');
+        field.setAttribute('placeholder', L('Group name (optional)'));
         field.setAttribute('maxlength', '20');
         field.setAttribute('rows', '1');
         field.value = grpNewName;
@@ -7621,7 +9590,7 @@
         var chosen = 0;
         Object.keys(grpNewSel).forEach(function (k) { if (grpNewSel[k]) chosen += 1; });
         var hint = card();
-        hint.appendChild(node('div', 'ph-sub', chosen ? chosen + ' chosen' : 'Choose two or more people'));
+        hint.appendChild(node('div', 'ph-sub', chosen ? L('{n} chosen', { n: chosen }) : L('Choose two or more people')));
         wrap.appendChild(hint);
 
         var listCard = card();
@@ -7638,7 +9607,7 @@
                 else {
                     var n = 0;
                     Object.keys(grpNewSel).forEach(function (k) { if (grpNewSel[k]) n += 1; });
-                    if (n >= SMS_G_MAX) { setNote('Up to ' + SMS_G_MAX + ' people in one group.', true); return; }
+                    if (n >= SMS_G_MAX) { setNote(L('Up to {n} people in one group.', { n: SMS_G_MAX }), true); return; }
                     grpNewSel[id] = true;
                     tick.className = 'sms-pick-tick on';
                     tick.textContent = '\u2713';
@@ -7650,7 +9619,7 @@
         });
         wrap.appendChild(listCard);
 
-        var go = node('button', 'ph-btn sms-gcreate' + (chosen >= 2 ? '' : ' off'), 'Create');
+        var go = node('button', 'ph-btn sms-gcreate' + (chosen >= 2 ? '' : ' off'), L('Create'));
         go.type = 'button';
         onTap(go, function (e) { e.stopPropagation(); createGroup(data); }, { silent: true });
         wrap.appendChild(go);
@@ -7660,7 +9629,7 @@
     function createGroup(data) {
         if (grpNewBusy) return;
         var ids = Object.keys(grpNewSel).filter(function (k) { return grpNewSel[k]; });
-        if (ids.length < 2) { setNote('Choose two or more people.', true); return; }
+        if (ids.length < 2) { setNote(L('Choose two or more people.'), true); return; }
         var name = String(grpNewName || '').replace(/^\s+|\s+$/g, '').slice(0, 20);
         // The picker lists people outside the household too (data.contacts), so names come from there.
         var person = function (mid) { return memberById(data.contacts, mid) || memberById(grpPeople(data.members), mid); };
@@ -7748,7 +9717,7 @@
             var quoted = m.replyTo ? findGroupMessage(list, m.replyTo) : null;
             if (quoted) {
                 var q = node('div', 'sms-quote');
-                q.appendChild(node('div', 'sms-quote-who', quoted.side === 'mine' ? 'You' : (quoted.name || grpName(data.meta, quoted.from))));
+                q.appendChild(node('div', 'sms-quote-who', quoted.side === 'mine' ? L('You') : (quoted.name || grpName(data.meta, quoted.from))));
                 q.appendChild(node('div', 'sms-quote-text', String(quoted.text || '').slice(0, 60)));
                 stack.appendChild(q);
             }
@@ -7760,7 +9729,7 @@
                 onTap(row, function (e) {
                     e.stopPropagation();
                     if (grpReply && grpReply.id === mm.id) grpReply = null;
-                    else grpReply = { id: mm.id, name: mm.side === 'mine' ? 'You' : (mm.name || grpName(data.meta, mm.from)), text: mm.text };
+                    else grpReply = { id: mm.id, name: mm.side === 'mine' ? L('You') : (mm.name || grpName(data.meta, mm.from)), text: mm.text };
                     grpSyncReplyBar();
                 });
             })(m);
@@ -7799,7 +9768,7 @@
             var field = box.parentNode;
             if (grpReply) compose.insertBefore(grpReplyBar(), field);
         }
-        if (box) box.setAttribute('placeholder', grpReply ? 'Reply' : 'Message');
+        if (box) box.setAttribute('placeholder', grpReply ? L('Reply') : L('Message'));
         var rows = document.getElementsByClassName('sms-grow');
         for (var i = 0; i < rows.length; i++) {
             if (grpReply && rows[i].getAttribute('data-id') === grpReply.id) rows[i].classList.add('picked');
@@ -7821,12 +9790,12 @@
         if (!data.meta) {
             wrap.appendChild(subHeader('group', 'Group'));
             var none = card();
-            none.appendChild(node('div', 'ph-empty', 'This group is gone.'));
+            none.appendChild(node('div', 'ph-empty', L('This group is gone.')));
             wrap.appendChild(none);
             return wrap;
         }
         var nav = node('div', 'sms-nav');
-        var back = node('div', 'ph-back', '< Back');
+        var back = node('div', 'ph-back', L('< Back'));
         onTap(back, function (e) { e.stopPropagation(); open('texts'); });
         nav.appendChild(back);
         // The avatar stack fights .sms-nav's centred peer block; the header carries the name
@@ -7834,13 +9803,13 @@
         var peer = node('div', 'sms-peer sms-peer-group');
         peer.appendChild(node('div', 'sms-peer-name', data.meta.name));
         var typing = data.status && data.status.typing ? grpName(data.meta, data.status.typing) : '';
-        var pres = node('div', 'sms-presence' + (typing ? '' : ' off'), typing ? typing + ' is typing\u2026' : (data.meta.members.length + ' people'));
+        var pres = node('div', 'sms-presence' + (typing ? '' : ' off'), typing ? L('{name} is typing…', { name: typing }) : L('{n} people', { n: data.meta.members.length }));
         pres.id = 'sms-presence';
         peer.appendChild(pres);
         nav.appendChild(peer);
         var more = node('button', 'sms-more');
         more.type = 'button';
-        more.setAttribute('title', 'Group settings');
+        more.setAttribute('title', L('Group settings'));
         // Plain text: the positioned divs measured correctly and still painted as one point, and
         // the svg never made it into the tree on this engine. Text is what everything else here is.
         more.appendChild(node('div', 'sms-more-glyph', '...'));
@@ -7872,7 +9841,7 @@
         }
         log.addEventListener('scroll', function () { grpJumpSync(log); });
         var list = data.messages || [];
-        if (!list.length) log.appendChild(node('div', 'sms-empty', 'No messages yet. Say something.'));
+        if (!list.length) log.appendChild(node('div', 'sms-empty', L('No messages yet. Say something.')));
         grpShown = grpFillLog(log, data, list, 0);
         wrap.appendChild(log);
 
@@ -7882,13 +9851,13 @@
         var field = node('div', 'sms-field');
         var at = node('button', 'sms-at-btn', '@');
         at.type = 'button';
-        at.setAttribute('title', 'Mention someone');
+        at.setAttribute('title', L('Mention someone'));
         onTap(at, function (e) { e.stopPropagation(); grpPickMention(data); }, { silent: true });
         var input = node('textarea', 'sms-input sms-ginput');
         input.id = 'sms-box';
         applyUiFont(input);
         input.setAttribute('maxlength', String(SMS_G_TEXT_MAX));
-        input.setAttribute('placeholder', grpReply ? 'Reply' : 'Message');
+        input.setAttribute('placeholder', grpReply ? L('Reply') : L('Message'));
         input.setAttribute('rows', '1');
         input.value = grpDraft;
         input.addEventListener('input', function () {
@@ -7915,7 +9884,7 @@
         var send = node('button', 'sms-send' + (String(grpDraft || '').replace(/\s/g, '') ? '' : ' off'));
         send.id = 'sms-send';
         send.type = 'button';
-        send.setAttribute('title', 'Send');
+        send.setAttribute('title', L('Send'));
         send.appendChild(sendGlyph());
         onTap(send, function (e) { e.stopPropagation(); sendGroup(); }, { silent: true });
         field.appendChild(at);
@@ -7984,10 +9953,10 @@
     function renameGroup(id, name) {
         if (grpNameBusy) return;
         var clean = String(name || '').replace(/^\s+|\s+$/g, '').slice(0, 20);
-        if (!clean) { setNote('The name cannot be empty.', true); return; }
+        if (!clean) { setNote(L('The name cannot be empty.'), true); return; }
         grpNameBusy = true;
         loadGroupMeta(id).then(function (meta) {
-            if (!meta) throw new Error('This group is gone.');
+            if (!meta) throw new Error(L('This group is gone.'));
             return saveGroupMeta(meta, { name: clean });
         }).then(function () {
             grpNameBusy = false;
@@ -8025,7 +9994,7 @@
         if (grpMembersBusy) return;
         grpMembersBusy = true;
         loadGroupMeta(id).then(function (meta) {
-            if (!meta) throw new Error('This group is gone.');
+            if (!meta) throw new Error(L('This group is gone.'));
             var rest = meta.members.filter(function (mid) { return String(mid) !== String(memberId); });
             var names = meta.memberNames || {};
             return saveGroupMeta(meta, { members: rest.map(function (mid) { return { id: mid, name: names[mid] || mid }; }) });
@@ -8039,7 +10008,7 @@
         if (grpMembersBusy) return;
         grpMembersBusy = true;
         loadGroupMeta(id).then(function (meta) {
-            if (!meta) throw new Error('This group is gone.');
+            if (!meta) throw new Error(L('This group is gone.'));
             if (meta.members.indexOf(String(memberId)) >= 0) return null;
             if (meta.members.length >= SMS_G_MAX) throw new Error('Up to ' + SMS_G_MAX + ' people.');
             var m = memberById(members || [], memberId);
@@ -8067,7 +10036,7 @@
         wrap.appendChild(subHeader('groupMembers', 'Members'));
         if (!data.meta) {
             var gone = card();
-            gone.appendChild(node('div', 'ph-empty', 'This group is gone.'));
+            gone.appendChild(node('div', 'ph-empty', L('This group is gone.')));
             wrap.appendChild(gone);
             return wrap;
         }
@@ -8080,11 +10049,11 @@
             else row.appendChild(node('div', 'ph-avatar sms-gface-blank'));
             var who = node('div', 'sms-pick-name', data.meta.memberNames[mid] || (m ? fullName(m) : String(mid)));
             row.appendChild(who);
-            if (String(mid) === String(data.meta.owner)) row.appendChild(node('div', 'sms-tag', data.meta.school ? '班长' : data.meta.company ? '群主' : 'Creator'));
+            if (String(mid) === String(data.meta.owner)) row.appendChild(node('div', 'sms-tag', data.meta.school ? L('班长') : data.meta.company ? L('群主') : L('Creator')));
             if (owner) {
                 var x = node('button', 'sms-pick-x', '\u00D7');
                 x.type = 'button';
-                x.setAttribute('title', 'Remove from group');
+                x.setAttribute('title', L('Remove from group'));
                 onTap(x, function (e) { e.stopPropagation(); removeMember(data.meta.id, mid); }, { silent: true });
                 row.appendChild(x);
             }
@@ -8093,7 +10062,7 @@
         wrap.appendChild(listCard);
 
         if (owner) {
-            var add = node('button', 'ph-btn sms-gcreate', grpAddOpen ? 'Done' : 'Add people');
+            var add = node('button', 'ph-btn sms-gcreate', grpAddOpen ? L('Done') : L('Add people'));
             add.type = 'button';
             onTap(add, function (e) { e.stopPropagation(); grpAddOpen = !grpAddOpen; refresh(); }, { silent: true });
             wrap.appendChild(add);
@@ -8113,19 +10082,19 @@
                     onTap(row, function (e) { e.stopPropagation(); addMember(data.meta.id, id, data.members); });
                     poolCard.appendChild(row);
                 });
-                if (!any) poolCard.appendChild(node('div', 'ph-empty', 'Everyone in the house is already in.'));
+                if (!any) poolCard.appendChild(node('div', 'ph-empty', L('Everyone in the house is already in.')));
                 wrap.appendChild(poolCard);
             }
         }
         if (data.meta.school) {
-            wrap.appendChild(node('div', 'ph-caption sms-company-note', '班级群：同班同学自动加入，群主是班长；在读期间不能退群，毕业后群会解散。'));
+            wrap.appendChild(node('div', 'ph-caption sms-company-note', L('班级群：同班同学自动加入，群主是班长；在读期间不能退群，毕业后群会解散。')));
             return wrap;
         }
         if (data.meta.company) {
-            wrap.appendChild(node('div', 'ph-caption sms-company-note', '公司工作群：入职自动加入，群主是公司职位最高的人；在职期间不能退群，离职后自动退出。'));
+            wrap.appendChild(node('div', 'ph-caption sms-company-note', L('公司工作群：入职自动加入，群主是公司职位最高的人；在职期间不能退群，离职后自动退出。')));
             return wrap;
         }
-        var leave = node('button', 'ph-btn sms-gleave', owner ? 'Disband group' : 'Leave group');
+        var leave = node('button', 'ph-btn sms-gleave', owner ? L('Disband group') : L('Leave group'));
         leave.type = 'button';
         onTap(leave, function (e) { e.stopPropagation(); leaveGroup(data.meta.id, data.meId); }, { silent: true });
         wrap.appendChild(leave);
@@ -8143,7 +10112,7 @@
         wrap.appendChild(subHeader('groupName', 'Group Name'));
         if (!data.meta) {
             var gone = card();
-            gone.appendChild(node('div', 'ph-empty', 'This group is gone.'));
+            gone.appendChild(node('div', 'ph-empty', L('This group is gone.')));
             wrap.appendChild(gone);
             return wrap;
         }
@@ -8152,7 +10121,7 @@
         // phone that reliably takes Latin letters and digits. An <input> here only ever got
         // text through the input method.
         var field = node('textarea', 'sms-gname');
-        field.setAttribute('placeholder', 'Group name');
+        field.setAttribute('placeholder', L('Group name'));
         field.setAttribute('maxlength', '20');
         field.setAttribute('rows', '1');
         field.value = grpNameDraft || data.meta.name;
@@ -8160,7 +10129,7 @@
         field.addEventListener('input', function () { grpNameDraft = field.value; });
         c.appendChild(field);
         wrap.appendChild(c);
-        var save = node('button', 'ph-btn sms-gcreate', 'Save');
+        var save = node('button', 'ph-btn sms-gcreate', L('Save'));
         save.type = 'button';
         onTap(save, function (e) {
             e.stopPropagation();
@@ -8196,7 +10165,7 @@
         sheet.id = 'sms-sheet';
         var owner = grpIsOwner(data.meta, data.meId);
         function item(label, danger, action) {
-            var row = node('div', 'sms-sheet-item' + (danger ? ' danger' : ''), label);
+            var row = node('div', 'sms-sheet-item' + (danger ? ' danger' : ''), L(label));
             onTap(row, function (e) {
                 e.stopPropagation();
                 grpHideMenuSheet();
@@ -8208,7 +10177,7 @@
         item('Members', false, function () { grpAddOpen = false; open('groupMembers'); });
         if (owner) item('Manage Members', false, function () { grpAddOpen = true; open('groupMembers'); });
         if (!data.meta.company) item(owner ? 'Disband Group' : 'Leave Group', true, function () { leaveGroup(data.meta.id, data.meId); });
-        var cancel = node('div', 'sms-sheet-cancel', 'Cancel');
+        var cancel = node('div', 'sms-sheet-cancel', L('Cancel'));
         onTap(cancel, function (e) { e.stopPropagation(); grpHideMenuSheet(); });
         sheet.appendChild(cancel);
         // In the corner, small: which build the phone is actually running.
@@ -8271,7 +10240,7 @@
         var b = node('button', 'sms-jump' + (grpStick ? '' : ' show'));
         b.id = 'sms-jump';
         b.type = 'button';
-        b.setAttribute('title', 'Latest');
+        b.setAttribute('title', L('Latest'));
         var svg = glyphSvg('0 0 24 24');
         svg.setAttribute('class', 'sms-jump-glyph');
         glyphPath(svg, 'M5.3 8.6a1.1 1.1 0 0 1 1.6 0L12 13.7l5.1-5.1a1.1 1.1 0 1 1 1.6 1.6l-5.9 5.9a1.1 1.1 0 0 1-1.6 0L5.3 10.2a1.1 1.1 0 0 1 0-1.6z', '#ffffff');
@@ -8358,7 +10327,7 @@
         var box = document.getElementById('sms-box');
         var body = String(box ? box.value : grpDraft || '').replace(/^\s+|\s+$/g, '');
         if (!body) return;
-        if (body.length > SMS_G_TEXT_MAX) { setNote('Keep it under ' + SMS_G_TEXT_MAX + ' characters.', true); return; }
+        if (body.length > SMS_G_TEXT_MAX) { setNote(L('Keep it under {n} characters.', { n: SMS_G_TEXT_MAX }), true); return; }
         var section = grpSection(grpId);
         var mention = grpMention;
         var reply = grpReply;
@@ -8539,9 +10508,9 @@
             return saveJson('profile', next, section);
         }).then(function () {
             personaDraft = null;
-            personaNote = { ok: true, text: 'Saved. The next reply uses it.' };
+            personaNote = { ok: true, text: L('Saved. The next reply uses it.') };
         }, function (err) {
-            personaNote = { ok: false, text: 'Could not save: ' + errText(err) };
+            personaNote = { ok: false, text: L('Could not save: {why}', { why: errText(err) }) };
         }).then(function () {
             personaSaving = false;
             personaRenderedKey = '';
@@ -8555,7 +10524,7 @@
         wrap.appendChild(subHeader('persona'));
         if (!data.contact) {
             var none = card();
-            none.appendChild(node('div', 'ph-empty', 'This person can no longer be texted.'));
+            none.appendChild(node('div', 'ph-empty', L('This person can no longer be texted.')));
             wrap.appendChild(none);
             personaRenderedKey = '';
             return wrap;
@@ -8574,9 +10543,9 @@
         who.appendChild(whoText);
         wrap.appendChild(who);
 
-        var styleCard = card('HOW ' + first.toUpperCase() + ' TALKS TO YOU');
+        var styleCard = card(L('HOW {name} TALKS TO YOU', { name: first.toUpperCase() }));
         styleCard.appendChild(personaField('pe-style', draft.style, PERSONA_STYLE_MAX, 9,
-            'Tone, words they use, how they react when scolded...', function (v) {
+            L('Tone, words they use, how they react when scolded...'), function (v) {
                 draft.style = v;
                 draft.dirty = true;
                 personaNote = null;
@@ -8587,7 +10556,7 @@
         var styleN = node('div', 'pe-count', String(draft.style || '').length + ' / ' + PERSONA_STYLE_MAX);
         styleN.id = 'pe-style-n';
         styleFoot.appendChild(styleN);
-        var styleReset = node('button', 'pe-reset' + (def.known && draft.style !== def.style ? '' : ' off'), 'Use default');
+        var styleReset = node('button', 'pe-reset' + (def.known && draft.style !== def.style ? '' : ' off'), L('Use default'));
         styleReset.id = 'pe-style-reset';
         styleReset.setAttribute('type', 'button');
         onTap(styleReset, function (e) {
@@ -8602,14 +10571,14 @@
         styleFoot.appendChild(styleReset);
         styleCard.appendChild(styleFoot);
         styleCard.appendChild(node('div', 'ai-hint', def.known
-            ? (def.style ? 'Only with the person you are playing now. Leave it empty for no set style.'
-                : 'There is no built-in style for this relationship. Anything you write here is used as is.')
-            : 'The reply service has not shared the built-in style yet. Start it, then come back.'));
+            ? (def.style ? L('Only with the person you are playing now. Leave it empty for no set style.')
+                : L('There is no built-in style for this relationship. Anything you write here is used as is.'))
+            : L('The reply service has not shared the built-in style yet. Start it, then come back.')));
         wrap.appendChild(styleCard);
 
-        var extraCard = card('ABOUT ' + first.toUpperCase());
+        var extraCard = card(L('ABOUT {name}', { name: first.toUpperCase() }));
         extraCard.appendChild(personaField('pe-extra', draft.extra, PERSONA_EXTRA_MAX, 5,
-            'Background, habits, secrets, what they care about...', function (v) {
+            L('Background, habits, secrets, what they care about...'), function (v) {
                 draft.extra = v;
                 draft.dirty = true;
                 personaNote = null;
@@ -8620,7 +10589,7 @@
         var extraN = node('div', 'pe-count', String(draft.extra || '').length + ' / ' + PERSONA_EXTRA_MAX);
         extraN.id = 'pe-extra-n';
         extraFoot.appendChild(extraN);
-        var extraReset = node('button', 'pe-reset' + (draft.extra !== def.extra ? '' : ' off'), 'Use default');
+        var extraReset = node('button', 'pe-reset' + (draft.extra !== def.extra ? '' : ' off'), L('Use default'));
         extraReset.id = 'pe-extra-reset';
         extraReset.setAttribute('type', 'button');
         onTap(extraReset, function (e) {
@@ -8634,13 +10603,13 @@
         });
         extraFoot.appendChild(extraReset);
         extraCard.appendChild(extraFoot);
-        extraCard.appendChild(node('div', 'ai-hint', 'Used in every chat with ' + first + ', and in Moments.'));
+        extraCard.appendChild(node('div', 'ai-hint', L('Used in every chat with {name}, and in Moments.', { name: first })));
         wrap.appendChild(extraCard);
 
         var actions = card();
         var btns = node('div', 'ph-btns');
         btns.style.marginTop = '0';
-        var save = node('button', 'ph-btn ' + (draft.dirty && !personaSaving ? 'on' : 'off') + ' last', personaSaving ? 'Saving...' : 'Save');
+        var save = node('button', 'ph-btn ' + (draft.dirty && !personaSaving ? 'on' : 'off') + ' last', personaSaving ? L('Saving...') : L('Save'));
         save.id = 'pe-save';
         save.setAttribute('type', 'button');
         onTap(save, function (e) {
@@ -8650,7 +10619,7 @@
         btns.appendChild(save);
         actions.appendChild(btns);
         if (personaNote) actions.appendChild(node('div', 'ai-result ' + (personaNote.ok ? 'ok' : 'err'), personaNote.text));
-        actions.appendChild(node('div', 'ai-hint', 'This changes who ' + first + ' is and how they talk. What they can do in the game, and how replies are written, stay the same.'));
+        actions.appendChild(node('div', 'ai-hint', L('This changes who {name} is and how they talk. What they can do in the game, and how replies are written, stay the same.', { name: first })));
         wrap.appendChild(actions);
         personaRenderedKey = personaRenderKey(data);
         return wrap;
@@ -8726,7 +10695,7 @@
         return {
             id: p.id, authorId: String(p.authorId), authorName: p.authorName || '', authorFirst: p.authorFirst || '',
             at: p.at, place: p.place || '', text: p.text, likes: likes, comments: comments, pending: !!p.pending,
-            game: smsGameClean(p.game), gameTime: p.gameTime || ''
+            game: smsGameClean(p.game), gameTime: p.gameTime || '', image: smsImageClean(p.image)
         };
     }
 
@@ -8743,7 +10712,7 @@
         var post;
         var i;
         if (a.kind === 'post') {
-            posts.push({ id: 'u-' + a.id, authorId: me.id, authorName: me.name, authorFirst: me.first, at: a.at, place: '', text: a.text || '', likes: [], comments: [], pending: true, game: smsGameClean(a.game) });
+            posts.push({ id: 'u-' + a.id, authorId: me.id, authorName: me.name, authorFirst: me.first, at: a.at, place: a.place || '', text: a.text || '', likes: [], comments: [], pending: true, game: smsGameClean(a.game), image: smsImageClean(a.image) });
             return;
         }
         post = findById(posts, String(a.postId));
@@ -8846,7 +10815,7 @@
         var parts = [view.circleKnown ? 'c' : 'n', momentsPresence(status).cls];
         for (var i = 0; i < view.posts.length; i++) {
             var p = view.posts[i];
-            var s = p.id + (p.pending ? '*' : '') + ':' + p.likes.length;
+            var s = p.id + (p.pending ? '*' : '') + (p.image ? '#' + p.image.id : '') + ':' + p.likes.length;
             for (var j = 0; j < p.likes.length; j++) s += ',' + p.likes[j].id;
             for (j = 0; j < p.comments.length; j++) s += ';' + p.comments[j].id + (p.comments[j].pending ? '*' : '');
             parts.push(s);
@@ -8916,19 +10885,28 @@
     function rememberMoments() {
         var post = document.getElementById('mo-post');
         var reply = document.getElementById('mo-reply');
+        var place = document.getElementById('mo-place');
         if (refreshDropping) {
             momentsPostDraft = '';
             momentsDraft = '';
+            momentsPlaceDraft = '';
             momentsFocus = null;
             return;
         }
         if (post) momentsPostDraft = post.value;
+        if (place) momentsPlaceDraft = place.value;
         if (reply) momentsDraft = reply.value;
         if (momentsFocusPending) return;
         momentsFocus = document.activeElement === post ? 'post' : document.activeElement === reply ? 'reply' : null;
     }
 
     function restoreMoments() {
+        // The deck can only measure itself once it is on the page; a page still being laid out
+        // is tried again on the next frames.
+        var tries = 0;
+        (function lay() {
+            if (moDeck && !(moAdopt() && moLayout()) && ++tries < 20) nextFrame(lay);
+        })();
         var id = momentsFocus === 'post' ? 'mo-post' : momentsFocus === 'reply' ? 'mo-reply' : '';
         var target = id ? document.getElementById(id) : null;
         var pending = momentsFocusPending;
@@ -8943,19 +10921,31 @@
     }
 
     var MO_HEART = 'M12 20.4s-6.6-4-8.8-7.7C1.5 9.6 2.2 6.2 4.9 5.1c1.8-.7 3.7-.1 4.9 1.6L12 8.8l2.2-2.1c1.2-1.7 3.1-2.3 4.9-1.6 2.7 1.1 3.4 4.5 1.7 7.6-2.2 3.7-8.8 7.7-8.8 7.7z';
-    var MO_BUBBLE = 'M4.2 4.4h15.6c.9 0 1.6.7 1.6 1.6v8.2c0 .9-.7 1.6-1.6 1.6h-6.2L8.2 19.4c-.4.3-.9 0-.9-.5v-3.1H4.2c-.9 0-1.6-.7-1.6-1.6V6c0-.9.7-1.6 1.6-1.6z';
+    var MO_HEART_LINE = 'M12 20.4s-6.6-4-8.8-7.7C1.5 9.6 2.2 6.2 4.9 5.1c1.8-.7 3.7-.1 4.9 1.6L12 8.8l2.2-2.1c1.2-1.7 3.1-2.3 4.9-1.6 2.7 1.1 3.4 4.5 1.7 7.6-2.2 3.7-8.8 7.7-8.8 7.7zm0-2.3c1.9-1.2 5.3-3.7 6.9-6.3 1.2-2.1.8-4.4-.9-5.1-1.1-.4-2.3 0-3.1 1.1L12 10.9 9.1 7.8C8.3 6.7 7.1 6.3 6 6.7c-1.7.7-2.1 3-.9 5.1 1.6 2.6 5 5.1 6.9 6.3z';
+    var MO_BUBBLE = 'M12 3.6c-4.9 0-8.8 3.4-8.8 7.7 0 2 .9 3.9 2.4 5.3l-.8 3.3c-.1.4.3.7.7.5l3.4-1.7c1 .3 2 .4 3.1.4 4.9 0 8.8-3.4 8.8-7.7S16.9 3.6 12 3.6zm0 13.7c-1 0-1.9-.1-2.8-.4l-.4-.1-2.1 1 .5-2-.4-.4c-1.4-1.1-2.2-2.6-2.2-4.2 0-3.3 3.3-6 7.3-6s7.3 2.7 7.3 6-3.2 6.1-7.2 6.1z';
     var MO_PIN = 'M12 2.2c-3.5 0-6.3 2.8-6.3 6.3 0 4.7 6.3 12.8 6.3 12.8s6.3-8.1 6.3-12.8c0-3.5-2.8-6.3-6.3-6.3zm0 8.6c-1.3 0-2.3-1-2.3-2.3s1-2.3 2.3-2.3 2.3 1 2.3 2.3-1 2.3-2.3 2.3z';
-    var MO_PENCIL = 'M3.6 16.6V20.4h3.8l11.2-11.2-3.8-3.8L3.6 16.6zM19.7 7.5c.4-.4.4-.9 0-1.3l-2-2c-.4-.4-.9-.4-1.3 0l-1.5 1.5 3.3 3.3 1.5-1.5z';
+    var MO_PLUS = 'M11 4.5h2v6.5h6.5v2H13v6.5h-2V13H4.5v-2H11V4.5z';
+    var MO_LEFT = 'M14.8 5.2l1.6 1.6-5.2 5.2 5.2 5.2-1.6 1.6L8 12l6.8-6.8z';
+    var MO_RIGHT = 'M9.2 5.2L16 12l-6.8 6.8-1.6-1.6 5.2-5.2-5.2-5.2 1.6-1.6z';
+    var MO_PHOTO = 'M4.5 5h15c.8 0 1.5.7 1.5 1.5v11c0 .8-.7 1.5-1.5 1.5h-15c-.8 0-1.5-.7-1.5-1.5v-11C3 5.7 3.7 5 4.5 5zm.3 1.8v8.6l3.9-4.1c.4-.4 1-.4 1.4 0l2.4 2.5 1.6-1.6c.4-.4 1-.4 1.4 0l3.7 3.8V6.8H4.8zM15.6 8.2a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2z';
 
     function moIcon(d, extra, fill) {
         var svg = glyphSvg('0 0 24 24');
-        svg.setAttribute('class', 'mo-ico' + (extra ? ' ' + extra : ''));
-        glyphPath(svg, d, fill || '#f5f5f7');
+        svg.setAttribute('class', 'mi-ico' + (extra ? ' ' + extra : ''));
+        glyphPath(svg, d, fill || 'currentColor', 'evenodd');
         return svg;
     }
 
     function momentsPerson(first, name, id) {
         return faceAvatar({ first_name: first || '', name: name || '', entity_id: id });
+    }
+
+    // An avatar inside the warm gradient ring the feed draws around people.
+    function moRing(first, name, id, cls) {
+        var ring = node('div', 'mi-ring' + (cls ? ' ' + cls : ''));
+        var gap = ring.appendChild(node('div', 'mi-ring-gap'));
+        gap.appendChild(momentsPerson(first, name, id));
+        return ring;
     }
 
     function momentsInput(id, cls, placeholder, value, max) {
@@ -8968,13 +10958,19 @@
         return t;
     }
 
+    // A tap that does nothing right after a swipe of the cards (the mouse up of a drag clicks).
+    function moTap(elm, fn, options) {
+        return onTap(elm, function (e) {
+            e.stopPropagation();
+            if (Date.now() - moDraggedAt < 350) return;
+            fn(e);
+        }, options);
+    }
+
     function momentsButton(text, cls, onClick) {
         var b = node('button', cls, text);
         b.setAttribute('type', 'button');
-        onTap(b, function (e) {
-            e.stopPropagation();
-            onClick();
-        });
+        moTap(b, function () { onClick(); });
         return b;
     }
 
@@ -8991,6 +10987,7 @@
     function closeComposer() {
         momentsComposeOpen = false;
         momentsFocus = null;
+        momentsEmojiFor = null;
         momentsRenderedKey = '';
         refresh();
     }
@@ -9041,11 +11038,10 @@
     function moEmojiButton(key) {
         var b = node('button', 'mo-emoji-btn' + (momentsEmojiFor === key ? ' on' : ''));
         b.setAttribute('type', 'button');
-        b.setAttribute('title', 'Emoji');
+        b.setAttribute('title', L('Emoji'));
         if (emojiSet) b.appendChild(emojiImg(emojiSet.byName['微笑'] || emojiSet.list[0].id, ''));
         else b.style.display = 'none';
-        onTap(b, function (e) {
-            e.stopPropagation();
+        moTap(b, function () {
             momentsEmojiFor = momentsEmojiFor === key ? null : key;
             var panel = document.getElementById('mo-emoji-' + key);
             if (panel) panel.style.display = momentsEmojiFor === key ? '' : 'none';
@@ -9071,45 +11067,184 @@
         return panel;
     }
 
-    function renderComposer(data) {
-        var me = data.me;
-        var c = node('div', 'mo-compose' + (momentsComposeOpen ? ' open' : ''));
-        var top = node('div', 'mo-compose-top');
-        top.appendChild(momentsPerson(me.first, me.name, me.id));
-        if (!momentsComposeOpen) {
-            var draft = String(momentsPostDraft || '').replace(/^\s+|\s+$/g, '');
-            var prompt = node('div', 'mo-prompt' + (draft ? ' filled' : ''));
-            emojiFill(prompt, draft || "What's on your mind?");
-            top.appendChild(prompt);
-            top.appendChild(moIcon(MO_PENCIL, 'mo-compose-ico', '#8e8e93'));
-            c.appendChild(top);
-            onTap(c, function () { openComposer(); });
-            return c;
+    // ---------- A photo for a new post ----------
+    // Picked on this PC through AI Phone Service, the same way as a photo in Texts: the answer
+    // lands in the phone's media folder as { id, width, height }. Only one picker at a time across
+    // the phone (Texts, wallpaper, the AI page share the service's request slot).
+    var moPhoto = null;
+    var moPhotoPending = null;
+    var moPhotoWatching = false;
+    var momentsPlaceDraft = '';
+
+    function pickMomentsPhoto() {
+        if (moPhotoPending || smsPhotoPending) {
+            setNote(L('Finish choosing the photo on the PC first.'), false);
+            return;
         }
-        top.appendChild(node('div', 'mo-who', me.name || 'You'));
-        c.appendChild(top);
-        var input = momentsInput('mo-post', 'mo-input', "What's on your mind?", momentsPostDraft, MOMENTS_POST_MAX);
-        moTrackCaret(input, 'post');
-        var row = node('div', 'mo-compose-row');
-        var hint = node('div', 'mo-hint', 'Friends who know you can see this.');
-        var postBtn = momentsButton('Post', 'mo-btn mo-btn-off', function () {
-            var text = String(input.value || '').replace(/^\s+|\s+$/g, '');
-            if (!text) return;
-            if (text.length > MOMENTS_POST_MAX) {
-                setNote('Keep it under ' + MOMENTS_POST_MAX + ' characters.', true);
+        if (aiPending || wallPending) {
+            setNote(L('Another phone service request is still running. Try again in a moment.'), false);
+            return;
+        }
+        loadAiService().then(function (v) {
+            aiService = v && typeof v === 'object' ? v : null;
+            if (!aiAlive(aiService)) {
+                setNote(L('Adding photos needs AI Phone Service running on this PC.'), true);
                 return;
             }
-            sendMomentsAction(me, { kind: 'post', text: text }, function () {
+            if (!aiTakesRequests(aiService)) {
+                setNote(L(AI_NO_GUARDIAN), true);
+                return;
+            }
+            var id = 'm' + Date.now() + '-' + (momentsSeq += 1);
+            moPhotoPending = { id: id, at: Date.now() };
+            momentsRenderedKey = '';
+            refresh();
+            saveJson('request', { id: id, type: 'photo_pick' }, AI_SECTION).then(function () {
+                moPhotoWatch();
+            }, function (err) {
+                moPhotoPending = null;
+                momentsRenderedKey = '';
+                refresh();
+                setNote(L('Could not open the photo picker: {why}', { why: errText(err) }), true);
+            });
+        }, function (err) {
+            setNote(L('Could not reach AI Phone Service: {why}', { why: errText(err) }), true);
+        });
+    }
+
+    function moPhotoWatch() {
+        if (moPhotoWatching) return;
+        moPhotoWatching = true;
+        var step = function () {
+            if (!moPhotoPending) { moPhotoWatching = false; return; }
+            loadAiService().then(function (v) {
+                if (v && typeof v === 'object') aiService = v;
+                moPhotoCheckAnswer();
+            }).then(null, function () {}).then(function () {
+                if (moPhotoPending) setTimeout(step, SMS_PHOTO_WATCH_MS);
+                else moPhotoWatching = false;
+            });
+        };
+        setTimeout(step, SMS_PHOTO_WATCH_MS);
+    }
+
+    function moPhotoCheckAnswer() {
+        var asked = moPhotoPending;
+        if (!asked) return;
+        var r = aiService && aiService.reply && typeof aiService.reply === 'object' ? aiService.reply : null;
+        if (!r || r.id !== asked.id || r.pending) {
+            if (Date.now() - asked.at > SMS_PHOTO_PICK_MS) {
+                moPhotoPending = null;
+                setNote(L('No answer from AI Phone Service. Check that it is running on this PC.'), true);
+                momentsRenderedKey = '';
+                if (current === 'moments') refresh();
+            }
+            return;
+        }
+        moPhotoPending = null;
+        var item = r.ok ? smsImageClean(r.item) : null;
+        if (item) moPhoto = item;
+        else if (r.code !== 'cancelled') setNote(String(r.message || L('That photo could not be added.')), true);
+        momentsRenderedKey = '';
+        if (current === 'moments') refresh();
+    }
+
+    // ---------- The composer: a page of its own, like a new post on Instagram ----------
+    function renderComposer(data) {
+        var me = data.me;
+        var page = node('div', 'mi-new');
+        var head = node('div', 'mi-new-head');
+        head.appendChild(momentsButton(L('Cancel'), 'mi-new-cancel', function () { closeComposer(); }));
+        head.appendChild(node('div', 'mi-new-title', L('New post')));
+        var postBtn = momentsButton(L('Share'), 'mi-new-share off', function () {
+            var input = document.getElementById('mo-post');
+            var place = document.getElementById('mo-place');
+            var text = String(input ? input.value : momentsPostDraft || '').replace(/^\s+|\s+$/g, '');
+            if (!text && !moPhoto) return;
+            if (moPhotoPending) {
+                setNote(L('Finish choosing the photo on the PC first.'), false);
+                return;
+            }
+            if (text.length > MOMENTS_POST_MAX) {
+                setNote(L('Keep it under {n} characters.', { n: MOMENTS_POST_MAX }), true);
+                return;
+            }
+            var action = { kind: 'post', text: text };
+            if (moPhoto) action.image = moPhoto;
+            var where = String(place ? place.value : momentsPlaceDraft || '').replace(/^\s+|\s+$/g, '');
+            if (where) action.place = where.slice(0, 30);
+            sendMomentsAction(me, action, function () {
                 momentsPostDraft = '';
+                momentsPlaceDraft = '';
+                moPhoto = null;
                 momentsComposeOpen = false;
                 momentsEmojiFor = null;
                 momentsFocus = null;
+                momentsAt = null;
             });
         });
+        head.appendChild(postBtn);
+        page.appendChild(head);
+
+        var body = node('div', 'mi-new-body');
+        var who = node('div', 'mi-new-who');
+        who.appendChild(moRing(me.first, me.name, me.id, 'small'));
+        var whoText = who.appendChild(node('div', 'mi-new-who-text'));
+        whoText.appendChild(node('div', 'mi-new-name', me.name || L('You')));
+        whoText.appendChild(node('div', 'mi-new-aud', L('Friends who know you can see this.')));
+        body.appendChild(who);
+
+        // The photo: a picked one with a way to drop it, the picker waiting, or a tile to add one.
+        var slot = node('div', 'mi-new-photo' + (moPhoto ? ' has' : ''));
+        if (moPhoto) {
+            var pic = slot.appendChild(node('div', 'mi-new-pic'));
+            pic.style.backgroundImage = 'url(media/' + moPhoto.id + '.jpg)';
+            var ratio = Math.max(0.6, Math.min(1.25, moPhoto.height / moPhoto.width));
+            pic.style.paddingTop = Math.round(ratio * 100) + '%';
+            var x = pic.appendChild(node('button', 'mi-new-pic-x', '×'));
+            x.setAttribute('type', 'button');
+            x.setAttribute('title', L('Remove photo'));
+            moTap(x, function () {
+                moPhoto = null;
+                momentsRenderedKey = '';
+                refresh();
+            });
+        } else if (moPhotoPending) {
+            var wait = slot.appendChild(node('div', 'mi-new-add wait'));
+            wait.appendChild(node('div', 'mi-new-spin'));
+            wait.appendChild(node('div', 'mi-new-add-text', L('Choose a photo on your PC. If covered by the game, press Alt+Tab.')));
+        } else {
+            var add = slot.appendChild(node('div', 'mi-new-add'));
+            add.appendChild(moIcon(MO_PHOTO, 'mi-new-add-ico'));
+            add.appendChild(node('div', 'mi-new-add-text', L('Add a photo')));
+            moTap(add, function () { pickMomentsPhoto(); });
+        }
+        body.appendChild(slot);
+
+        var input = momentsInput('mo-post', 'mi-new-input', L('Write a caption…'), momentsPostDraft, MOMENTS_POST_MAX);
+        moTrackCaret(input, 'post');
+        body.appendChild(input);
+
+        var place = node('div', 'mi-new-place');
+        place.appendChild(moIcon(MO_PIN, 'mi-new-place-ico'));
+        var where = node('input', 'mi-new-place-input');
+        where.id = 'mo-place';
+        applyUiFont(where);
+        where.setAttribute('maxlength', '30');
+        where.setAttribute('placeholder', L('Add location (optional)'));
+        where.value = momentsPlaceDraft || '';
+        where.addEventListener('input', function () { momentsPlaceDraft = where.value; });
+        place.appendChild(where);
+        body.appendChild(place);
+
+        var tools = node('div', 'mi-new-tools');
+        tools.appendChild(moEmojiButton('post'));
+        var count = tools.appendChild(node('div', 'mi-new-count'));
+        body.appendChild(tools);
         var sync = function () {
             var n = String(input.value || '').length;
-            hint.textContent = n ? (n + ' / ' + MOMENTS_POST_MAX) : 'Friends who know you can see this.';
-            postBtn.className = n ? 'mo-btn' : 'mo-btn mo-btn-off';
+            count.textContent = n ? n + ' / ' + MOMENTS_POST_MAX : '';
+            postBtn.className = (n || moPhoto) && !moPhotoPending ? 'mi-new-share' : 'mi-new-share off';
         };
         var changed = function (value) {
             momentsPostDraft = value;
@@ -9117,17 +11252,9 @@
         };
         input.addEventListener('input', function () { changed(input.value); });
         sync();
-        row.appendChild(moEmojiButton('post'));
-        row.appendChild(hint);
-        row.appendChild(momentsButton('Cancel', 'mo-btn mo-btn-plain', function () {
-            momentsEmojiFor = null;
-            closeComposer();
-        }));
-        row.appendChild(postBtn);
-        c.appendChild(input);
-        c.appendChild(row);
-        c.appendChild(moEmojiPanel('post', MOMENTS_POST_MAX, changed));
-        return c;
+        body.appendChild(moEmojiPanel('post', MOMENTS_POST_MAX, changed));
+        page.appendChild(body);
+        return page;
     }
 
     function openReply(postId, comment) {
@@ -9138,6 +11265,7 @@
             commentId: comment ? comment.id : null,
             name: comment ? comment.authorName : null
         };
+        momentsAt = postId;
         momentsDraft = '';
         momentsFocus = 'reply';
         momentsFocusPending = true;
@@ -9154,10 +11282,11 @@
     }
 
     function renderReplyBox(data, post) {
-        var box = node('div', 'mo-reply-box');
-        if (momentsComposer.name) box.appendChild(node('div', 'mo-reply-to', 'Reply to ' + momentsComposer.name));
-        var row = node('div', 'mo-reply-row');
-        var input = momentsInput('mo-reply', 'mo-input mo-input-small', momentsComposer.name ? 'Write a reply' : 'Write a comment', momentsDraft, MOMENTS_COMMENT_MAX);
+        var box = node('div', 'mi-reply');
+        if (momentsComposer.name) box.appendChild(node('div', 'mi-reply-to', L('Replying to {name}', { name: momentsComposer.name })));
+        var row = node('div', 'mi-reply-row');
+        row.appendChild(momentsPerson(data.me.first, data.me.name, data.me.id));
+        var input = momentsInput('mo-reply', 'mi-reply-input', momentsComposer.name ? L('Write a reply…') : L('Add a comment…'), momentsDraft, MOMENTS_COMMENT_MAX);
         moTrackCaret(input, 'reply');
         var send = function () {
             var text = String(input.value || '').replace(/^\s+|\s+$/g, '');
@@ -9167,6 +11296,7 @@
                 momentsDraft = '';
                 momentsEmojiFor = null;
                 momentsFocus = null;
+                momentsOpenComments[post.id] = true;
             });
         };
         input.addEventListener('input', function () { momentsDraft = input.value; });
@@ -9179,17 +11309,15 @@
                 closeReply();
             }
         });
-        row.appendChild(moEmojiButton('reply'));
         row.appendChild(input);
-        var btns = node('div', 'mo-reply-btns');
-        btns.appendChild(momentsButton('Send', 'mo-btn', send));
-        btns.appendChild(momentsButton('Cancel', 'mo-btn mo-btn-plain', function () {
+        row.appendChild(moEmojiButton('reply'));
+        row.appendChild(momentsButton(L('Post'), 'mi-reply-send', send));
+        box.appendChild(row);
+        box.appendChild(moEmojiPanel('reply', MOMENTS_COMMENT_MAX, function (value) { momentsDraft = value; }));
+        box.appendChild(momentsButton(L('Cancel'), 'mi-reply-cancel', function () {
             momentsEmojiFor = null;
             closeReply();
         }));
-        row.appendChild(btns);
-        box.appendChild(row);
-        box.appendChild(moEmojiPanel('reply', MOMENTS_COMMENT_MAX, function (value) { momentsDraft = value; }));
         return box;
     }
 
@@ -9200,14 +11328,17 @@
     }
 
     function renderMomentsEmpty(known) {
-        var box = node('div', 'mo-empty');
-        var mark = node('div', 'mo-empty-mark');
-        mark.appendChild(appGlyph('moments'));
-        box.appendChild(mark);
-        box.appendChild(node('div', 'mo-empty-title', 'No moments yet'));
-        box.appendChild(node('div', 'mo-empty-sub', known
-            ? 'Posts from people you know will show up here.'
-            : 'Moments appear once the reply service has seen this character.'));
+        var box = node('div', 'mi-empty');
+        var stack = box.appendChild(node('div', 'mm-cover-stack mi-empty-stack'));
+        stack.appendChild(node('div', 'mm-cover-card c3'));
+        stack.appendChild(node('div', 'mm-cover-card c2'));
+        var front = stack.appendChild(node('div', 'mm-cover-card c1'));
+        front.appendChild(node('span', 'mm-cover-sun'));
+        front.appendChild(node('span', 'mm-cover-hill'));
+        box.appendChild(node('div', 'mi-empty-title', L('No moments yet')));
+        box.appendChild(node('div', 'mi-empty-sub', known
+            ? L('Posts from people you know will show up here.')
+            : L('Moments appear once the reply service has seen this character.')));
         return box;
     }
 
@@ -9220,43 +11351,83 @@
         return post.gameTime || '';
     }
 
-    // One post laid out like a social feed: who and when on top, the text across the card, then
-    // Like and Comment always in reach, then who liked it and the comments.
-    function renderPost(data, post) {
+    // A text-only post gets a cover of its own: a gradient picked by the post (so it is the same
+    // every time) with the words set large on it, the way a text post looks on Instagram.
+    var MO_COVERS = [
+        ['#FF9A8B', '#FF6A88'], ['#F6D365', '#FDA085'], ['#4FACFE', '#2A6FF2'], ['#A18CD1', '#E58FC2'],
+        ['#43C6AC', '#2F8F9D'], ['#FF9466', '#F2541B'], ['#5EE7DF', '#5A8DEE'], ['#30CFD0', '#4B2C80']
+    ];
+
+    function moHash(s) {
+        var h = 0;
+        for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+        return Math.abs(h);
+    }
+
+    function moMedia(data, post, liked) {
+        var media = node('div', 'mi-media' + (post.image ? ' photo' : ' words'));
+        if (post.image) {
+            var ratio = Math.max(0.8, Math.min(1.25, post.image.height / post.image.width));
+            media.style.paddingTop = Math.round(ratio * 100) + '%';
+            var pic = media.appendChild(node('div', 'mi-media-pic'));
+            pic.style.backgroundImage = 'url(media/' + post.image.id + '.jpg)';
+        } else {
+            var c = MO_COVERS[moHash(post.id) % MO_COVERS.length];
+            media.style.backgroundImage = 'linear-gradient(135deg, ' + c[0] + ' 0%, ' + c[1] + ' 100%)';
+            var words = media.appendChild(node('div', 'mi-words'));
+            var len = String(post.text || '').length;
+            var size = len <= 18 ? 'xl' : len <= 48 ? 'l' : len <= 110 ? 'm' : 's';
+            var t = words.appendChild(node('div', 'mi-words-text ' + size));
+            emojiFill(t, post.text);
+            words.appendChild(node('div', 'mi-words-mark', '“'));
+        }
+        // Two taps on the picture like it, with the heart Instagram shows.
+        var pop = media.appendChild(node('div', 'mi-pop'));
+        pop.appendChild(moIcon(MO_HEART, 'mi-pop-ico', '#ffffff'));
+        if (!post.pending) {
+            var lastTap = 0;
+            moTap(media, function () {
+                var now = Date.now();
+                if (now - lastTap > 320) { lastTap = now; return; }
+                lastTap = 0;
+                pop.className = 'mi-pop';
+                nextFrame(function () { pop.className = 'mi-pop on'; });
+                if (!liked) sendMomentsAction(data.me, { kind: 'like', postId: post.id });
+            }, { silent: true });
+        }
+        return media;
+    }
+
+    // One post as a card: who and where on top, the picture, the heart and the comment button,
+    // who liked it, the caption and the latest comments, and the comment box when it is open.
+    function renderCard(data, post) {
         var me = data.me;
         var mine = post.authorId === me.id;
-        var c = node('div', 'mo-post' + (post.pending ? ' mo-pending' : ''));
+        var card = node('div', 'mi-card' + (post.pending ? ' pending' : ''));
+        card._postId = post.id;
 
-        var head = node('div', 'mo-head');
-        head.appendChild(momentsPerson(post.authorFirst, post.authorName, post.authorId));
-        var who = node('div', 'mo-who-box');
-        who.appendChild(node('div', 'mo-author', post.authorName || ('#' + post.authorId)));
-        var sub = node('div', 'mo-sub');
-        sub.appendChild(node('span', 'mo-time' + (post.pending ? ' wait' : ''), post.pending ? 'Sending' : moTime(post, data.env)));
+        var head = node('div', 'mi-head');
+        head.appendChild(moRing(post.authorFirst, post.authorName, post.authorId, 'small'));
+        var who = head.appendChild(node('div', 'mi-who'));
+        who.appendChild(node('div', 'mi-name', post.authorName || ('#' + post.authorId)));
+        var sub = who.appendChild(node('div', 'mi-sub'));
         if (post.place) {
-            sub.appendChild(node('span', 'mo-sep', '·'));
-            var place = node('span', 'mo-place');
-            place.appendChild(moIcon(MO_PIN, 'mo-pin', '#8e8e93'));
-            place.appendChild(node('span', null, post.place));
-            sub.appendChild(place);
+            sub.appendChild(moIcon(MO_PIN, 'mi-pin'));
+            sub.appendChild(node('span', 'mi-place', post.place));
+            sub.appendChild(node('span', 'mi-dot', '·'));
         }
-        who.appendChild(sub);
-        head.appendChild(who);
+        sub.appendChild(node('span', 'mi-time', post.pending ? L('Sending') : moTime(post, data.env)));
         if (mine && !post.pending) {
-            var more = node('button', 'mo-more' + (momentsMenuPost === post.id ? ' on' : ''));
+            var more = head.appendChild(node('button', 'mi-more' + (momentsMenuPost === post.id ? ' on' : '')));
             more.setAttribute('type', 'button');
             more.appendChild(node('span'));
             more.appendChild(node('span'));
             more.appendChild(node('span'));
-            onTap(more, function (e) {
-                e.stopPropagation();
-                toggleMenu(post.id);
-            });
-            head.appendChild(more);
+            moTap(more, function () { toggleMenu(post.id); });
             if (momentsMenuPost === post.id) {
                 var confirming = momentsConfirmDelete === post.id;
-                var menu = node('div', 'mo-menu');
-                menu.appendChild(momentsButton(confirming ? 'Tap again to delete' : 'Delete post', 'mo-menu-item warn', function () {
+                var menu = head.appendChild(node('div', 'mi-menu'));
+                menu.appendChild(momentsButton(confirming ? L('Tap again to delete') : L('Delete post'), 'mi-menu-item warn', function () {
                     if (momentsConfirmDelete !== post.id) {
                         momentsConfirmDelete = post.id;
                         momentsRenderedKey = '';
@@ -9272,96 +11443,342 @@
                     }
                     momentsConfirmDelete = null;
                     momentsMenuPost = null;
+                    momentsAt = null;
                     sendMomentsAction(me, { kind: 'delete', postId: post.id });
                 }));
-                head.appendChild(menu);
             }
         }
-        c.appendChild(head);
-
-        var text = node('div', 'mo-text');
-        emojiFill(text, post.text);
-        c.appendChild(text);
+        card.appendChild(head);
 
         var liked = false;
         var i;
         for (i = 0; i < post.likes.length; i++) if (String(post.likes[i].id) === me.id) liked = true;
+        card.appendChild(moMedia(data, post, liked));
+
         if (!post.pending) {
-            var actions = node('div', 'mo-actions');
-            var like = momentsButton('', 'mo-act' + (liked ? ' on' : ''), function () {
+            var bar = card.appendChild(node('div', 'mi-bar'));
+            var like = bar.appendChild(node('button', 'mi-act like' + (liked ? ' on' : '')));
+            like.setAttribute('type', 'button');
+            like.setAttribute('title', liked ? L('Unlike') : L('Like'));
+            like.appendChild(moIcon(liked ? MO_HEART : MO_HEART_LINE, 'mi-act-ico'));
+            moTap(like, function () {
+                like.className = 'mi-act like ' + (liked ? '' : 'on') + ' bump';
                 sendMomentsAction(me, { kind: liked ? 'unlike' : 'like', postId: post.id });
             });
-            like.appendChild(moIcon(MO_HEART, '', liked ? '#FF375F' : '#8e8e93'));
-            like.appendChild(node('span', null, post.likes.length ? String(post.likes.length) : 'Like'));
-            actions.appendChild(like);
-            var talk = momentsButton('', 'mo-act', function () { openReply(post.id, null); });
-            talk.appendChild(moIcon(MO_BUBBLE, '', '#8e8e93'));
-            talk.appendChild(node('span', null, post.comments.length ? String(post.comments.length) : 'Comment'));
-            actions.appendChild(talk);
-            c.appendChild(actions);
+            var talk = bar.appendChild(node('button', 'mi-act'));
+            talk.setAttribute('type', 'button');
+            talk.setAttribute('title', L('Comment'));
+            talk.appendChild(moIcon(MO_BUBBLE, 'mi-act-ico'));
+            moTap(talk, function () { openReply(post.id, null); });
+            if (post.comments.length) bar.appendChild(node('span', 'mi-act-count', String(post.comments.length)));
         }
 
-        if (post.likes.length || post.comments.length) {
-            var social = node('div', 'mo-social');
-            if (post.likes.length) {
-                var likes = node('div', 'mo-likes' + (post.comments.length ? ' split' : ''));
-                likes.appendChild(moIcon(MO_HEART, '', '#FF375F'));
-                likes.appendChild(node('span', 'mo-like-names', post.likes.map(function (l) {
-                    return likeName(data, l);
-                }).join('，')));
-                social.appendChild(likes);
-            }
-            post.comments.forEach(function (cm) {
-                var own = String(cm.authorId) === me.id;
-                var line = node('div', 'mo-c' + (cm.pending ? ' dim' : '') + (!own && !cm.pending ? ' live' : ''));
-                line.appendChild(node('span', 'mo-n', cm.authorName || ('#' + cm.authorId)));
-                if (cm.replyTo) {
-                    line.appendChild(node('span', 'mo-r', ' reply '));
-                    line.appendChild(node('span', 'mo-n', cm.replyTo.name || ('#' + cm.replyTo.id)));
-                }
-                line.appendChild(node('span', 'mo-colon', '：'));
-                emojiFill(line, cm.text);
-                if (!own && !cm.pending) {
-                    onTap(line, function (e) {
-                        e.stopPropagation();
-                        openReply(post.id, cm);
-                    });
-                }
-                social.appendChild(line);
-            });
-            c.appendChild(social);
+        var info = card.appendChild(node('div', 'mi-info'));
+        if (post.likes.length) {
+            var names = post.likes.map(function (l) { return likeName(data, l); });
+            var shown = names.slice(0, 2).join(L('、'));
+            info.appendChild(node('div', 'mi-likes', names.length > 2
+                ? L('Liked by {names} and {n} others', { names: shown, n: names.length - 2 })
+                : L('Liked by {names}', { names: shown })));
         }
-        if (momentsComposer && momentsComposer.postId === post.id && !post.pending) c.appendChild(renderReplyBox(data, post));
-        return c;
+        if (post.image && post.text) {
+            var cap = info.appendChild(node('div', 'mi-caption'));
+            cap.appendChild(node('span', 'mi-cap-name', post.authorName || ('#' + post.authorId)));
+            var capText = cap.appendChild(node('span', 'mi-cap-text'));
+            emojiFill(capText, post.text);
+        }
+        if (post.comments.length) {
+            var open = !!momentsOpenComments[post.id] || post.comments.length <= 2;
+            var list = open ? post.comments : post.comments.slice(-2);
+            if (!open) {
+                var all = info.appendChild(node('div', 'mi-all', L('View all {n} comments', { n: post.comments.length })));
+                moTap(all, function () {
+                    momentsOpenComments[post.id] = true;
+                    momentsRenderedKey = '';
+                    refresh();
+                });
+            }
+            list.forEach(function (cm) {
+                var own = String(cm.authorId) === me.id;
+                var line = info.appendChild(node('div', 'mi-c' + (cm.pending ? ' dim' : '') + (!own && !cm.pending ? ' live' : '')));
+                line.appendChild(node('span', 'mi-c-name', cm.authorName || ('#' + cm.authorId)));
+                if (cm.replyTo) {
+                    line.appendChild(node('span', 'mi-c-to', ' ▸ '));
+                    line.appendChild(node('span', 'mi-c-name', cm.replyTo.name || ('#' + cm.replyTo.id)));
+                }
+                var body = line.appendChild(node('span', 'mi-c-text'));
+                emojiFill(body, cm.text);
+                if (!own && !cm.pending) moTap(line, function () { openReply(post.id, cm); });
+            });
+        }
+        if (momentsComposer && momentsComposer.postId === post.id && !post.pending) card.appendChild(renderReplyBox(data, post));
+        return card;
     }
 
-    function renderMoments(data) {
-        var wrap = node('div');
-        wrap.id = 'mo-screen';
-        wrap.appendChild(subHeader('moments'));
-        var p = momentsPresence(data.status);
-        if (p.text) wrap.appendChild(node('div', 'mo-status ' + p.cls, p.text));
-        wrap.appendChild(renderComposer(data));
-        if (momentsComposer && !findById(data.view.posts, momentsComposer.postId)) momentsComposer = null;
-        if (!data.view.posts.length) {
-            wrap.appendChild(renderMomentsEmpty(data.view.circleKnown));
-        } else {
-            var feed = node('div', 'mo-feed');
-            data.view.posts.forEach(function (post) { feed.appendChild(renderPost(data, post)); });
-            wrap.appendChild(feed);
+    // ---------- The deck: one card at a time, swiped sideways ----------
+    // The cards sit in a row on a track; the deck shows the current one whole and a sliver of its
+    // neighbours. A drag, a sideways wheel or trackpad, the arrows or the dots turn it; the deck
+    // takes the height of the card shown, and the page scrolls up and down as usual.
+    var momentsAt = null;
+    var momentsOpenComments = {};
+    var moDeck = null;
+    var moDrag = null;
+    var moDraggedAt = 0;
+    var moWheel = { sum: 0, at: 0, lockedUntil: 0 };
+    var MO_PEEK = 30;
+    var MO_GAP = 10;
+
+    function moIndexOf(posts, id) {
+        for (var i = 0; i < posts.length; i++) if (posts[i].id === id) return i;
+        return 0;
+    }
+
+    function moStories(data) {
+        var row = node('div', 'mi-stories');
+        var me = data.me;
+        var mine = row.appendChild(node('div', 'mi-story me'));
+        var ring = mine.appendChild(moRing(me.first, me.name, me.id, 'plain'));
+        var plus = ring.appendChild(node('div', 'mi-story-plus'));
+        plus.appendChild(moIcon(MO_PLUS, 'mi-story-plus-ico', '#ffffff'));
+        mine.appendChild(node('div', 'mi-story-name', L('Your story')));
+        moTap(mine, function () { openComposer(); });
+        var seen = {};
+        data.view.posts.forEach(function (p, i) {
+            if (p.authorId === me.id || seen[p.authorId]) return;
+            seen[p.authorId] = true;
+            var s = row.appendChild(node('div', 'mi-story'));
+            s.appendChild(moRing(p.authorFirst, p.authorName, p.authorId));
+            s.appendChild(node('div', 'mi-story-name', p.authorFirst || p.authorName || ('#' + p.authorId)));
+            moTap(s, function () { moGo(i, true); });
+        });
+        return row;
+    }
+
+    function moPager(count) {
+        var pager = node('div', 'mi-pager');
+        var prev = pager.appendChild(node('button', 'mi-arrow prev'));
+        prev.setAttribute('type', 'button');
+        prev.setAttribute('title', L('Previous'));
+        prev.appendChild(moIcon(MO_LEFT, 'mi-arrow-ico'));
+        moTap(prev, function () { if (moDeck) moGo(moDeck.index - 1, true); });
+        var dots = pager.appendChild(node('div', 'mi-dots'));
+        var shown = Math.min(count, 7);
+        for (var i = 0; i < shown; i++) dots.appendChild(node('span', 'mi-dotp'));
+        pager.appendChild(node('div', 'mi-count'));
+        var next = pager.appendChild(node('button', 'mi-arrow next'));
+        next.setAttribute('type', 'button');
+        next.setAttribute('title', L('Next'));
+        next.appendChild(moIcon(MO_RIGHT, 'mi-arrow-ico'));
+        moTap(next, function () { if (moDeck) moGo(moDeck.index + 1, true); });
+        return pager;
+    }
+
+    // The page on screen after a redraw: the poll's redraw morphs the old page into the new one
+    // (showInPlace), keeping old elements whose tag and attributes did not change, so the deck
+    // takes its parts from the page itself, not from the copy it was drawn in.
+    function moAdopt() {
+        var d = moDeck;
+        var s = document.getElementById('mo-screen');
+        var deck = s ? s.querySelector('.mi-deck') : null;
+        if (!d || !deck) return false;
+        if (deck !== d.deck) {
+            d.deck = deck;
+            d.w = 0;
         }
+        d.track = deck.querySelector('.mi-track');
+        d.cards = [].slice.call(d.track.children);
+        d.count = s.querySelector('.mi-count');
+        d.dots = s.querySelector('.mi-dots');
+        d.prev = s.querySelector('.mi-arrow.prev');
+        d.next = s.querySelector('.mi-arrow.next');
+        if (d.cards.length !== d.posts.length) return false;
+        for (var i = 0; i < d.cards.length; i++) if (!d.cards[i].style.width) d.w = 0;
+        moBindDeck();
+        return true;
+    }
+
+    // Card widths follow the deck, which follows the phone window (it can be resized).
+    function moLayout() {
+        var d = moDeck;
+        if (!d || !d.deck.parentNode) return false;
+        var w = d.deck.clientWidth;
+        if (!w) return false;
+        if (w !== d.w) {
+            d.w = w;
+            d.cardW = Math.max(160, w - MO_PEEK * 2);
+            for (var i = 0; i < d.cards.length; i++) d.cards[i].style.width = d.cardW + 'px';
+        }
+        moGo(d.index, false);
+        return true;
+    }
+
+    function moOffset(i) {
+        var d = moDeck;
+        return MO_PEEK - i * (d.cardW + MO_GAP);
+    }
+
+    function moSetX(x, animate) {
+        var d = moDeck;
+        d.track.style.transition = animate ? 'transform 380ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none';
+        d.track.style.transform = 'translateX(' + Math.round(x) + 'px)';
+    }
+
+    function moGo(i, animate) {
+        var d = moDeck;
+        if (!d || !d.cards.length) return;
+        if (!d.cardW && !moLayout()) return;
+        var n = d.cards.length;
+        i = Math.max(0, Math.min(n - 1, i));
+        d.index = i;
+        momentsAt = d.posts[i].id;
+        moSetX(moOffset(i), animate);
+        for (var k = 0; k < n; k++) d.cards[k].className = d.cards[k].className.replace(/\s*\bactive\b/g, '') + (k === i ? ' active' : '');
+        var h = d.cards[i].offsetHeight;
+        if (h) d.deck.style.height = h + 'px';
+        if (d.count) d.count.textContent = (i + 1) + ' / ' + n;
+        if (d.prev) d.prev.className = 'mi-arrow prev' + (i === 0 ? ' off' : '');
+        if (d.next) d.next.className = 'mi-arrow next' + (i === n - 1 ? ' off' : '');
+        // Seven dots at most; with more posts the bright one marks where in the feed this is.
+        var dots = d.dots ? d.dots.children : [];
+        var on = dots.length ? (n <= dots.length ? i : Math.round(i / (n - 1) * (dots.length - 1))) : -1;
+        for (var j = 0; j < dots.length; j++) dots[j].className = 'mi-dotp' + (j === on ? ' on' : '');
+    }
+
+    function moBindDeck() {
+        var d = moDeck;
+        if (d.deck._miBound) return;
+        d.deck._miBound = true;
+        d.deck.addEventListener('mousedown', function (e) {
+            if (e.button || moDeck !== d) return;
+            var t = e.target;
+            if (t && /^(TEXTAREA|INPUT)$/.test(t.tagName)) return;
+            if (!d.cardW) moLayout();
+            moDrag = { x: e.clientX, y: e.clientY, base: moOffset(d.index), now: moOffset(d.index), moved: false,
+                press: pressStart(e), samples: [{ x: e.clientX, t: Date.now() }] };
+        });
+        d.deck.addEventListener('wheel', function (e) {
+            if (moDeck !== d) return;
+            // Up and down scrolls the page; sideways (a trackpad, a tilted wheel) turns the cards.
+            if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+            if (e.preventDefault) e.preventDefault();
+            var now = Date.now();
+            if (now < moWheel.lockedUntil) return;
+            if (now - moWheel.at > 250) moWheel.sum = 0;
+            moWheel.at = now;
+            moWheel.sum += e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX;
+            if (Math.abs(moWheel.sum) < 60) return;
+            var dir = moWheel.sum > 0 ? 1 : -1;
+            moWheel.sum = 0;
+            moWheel.lockedUntil = now + 420;
+            moGo(d.index + dir, true);
+        }, { passive: false });
+    }
+
+    document.addEventListener('mousemove', function (e) {
+        var g = moDrag;
+        var d = moDeck;
+        if (!g || !d) return;
+        if (pressLost(e, g.press)) { moRelease(); return; }
+        var dx = e.clientX - g.x;
+        var dy = e.clientY - g.y;
+        if (!g.moved) {
+            if (Math.abs(dx) < 7 && Math.abs(dy) < 7) return;
+            if (Math.abs(dy) > Math.abs(dx)) { moDrag = null; return; }
+            g.moved = true;
+        }
+        var pos = g.base + dx;
+        var max = moOffset(0);
+        var min = moOffset(d.cards.length - 1);
+        if (pos > max) pos = max + (pos - max) * 0.3;
+        else if (pos < min) pos = min + (pos - min) * 0.3;
+        g.now = pos;
+        moSetX(pos, false);
+        g.samples.push({ x: e.clientX, t: Date.now() });
+        if (g.samples.length > 6) g.samples.shift();
+    });
+
+    function moRelease() {
+        var g = moDrag;
+        var d = moDeck;
+        moDrag = null;
+        if (!g || !d || !g.moved) return;
+        moDraggedAt = Date.now();
+        var first = g.samples[0];
+        var last = g.samples[g.samples.length - 1];
+        var dt = last.t - first.t;
+        var v = dt > 0 ? (last.x - first.x) / dt : 0;
+        var travel = g.now - g.base;
+        var target = d.index;
+        if (v <= -0.45 || travel <= -d.cardW * 0.22) target = d.index + 1;
+        else if (v >= 0.45 || travel >= d.cardW * 0.22) target = d.index - 1;
+        moGo(target, true);
+    }
+
+    document.addEventListener('mouseup', moRelease);
+    document.addEventListener('mouseout', function (e) {
+        if (moDrag && leftPhone(e)) moRelease();
+    });
+    window.addEventListener('blur', moRelease);
+
+    // The window can be resized by its corner, and pictures settle after they load: the deck
+    // keeps the card widths and its own height in step.
+    setInterval(function () {
+        var d = moDeck;
+        if (current !== 'moments' || !d || moDrag || !d.deck.parentNode) return;
+        if (d.deck.clientWidth !== d.w) { moLayout(); return; }
+        var h = d.cards[d.index] ? d.cards[d.index].offsetHeight : 0;
+        if (h && d.deck.style.height !== h + 'px') d.deck.style.height = h + 'px';
+    }, 500);
+
+    function renderMoments(data) {
+        var wrap = node('div', 'mi');
+        wrap.id = 'mo-screen';
         momentsRenderedKey = momentsRenderKey(data);
+        if (momentsComposeOpen) {
+            moDeck = null;
+            wrap.appendChild(renderComposer(data));
+            return wrap;
+        }
+        var head = subHeader('moments');
+        var newBtn = head.appendChild(node('button', 'mi-new-btn'));
+        newBtn.setAttribute('type', 'button');
+        newBtn.setAttribute('title', L('New post'));
+        newBtn.appendChild(moIcon(MO_PLUS, 'mi-new-btn-ico'));
+        moTap(newBtn, function () { openComposer(); });
+        wrap.appendChild(head);
+        var p = momentsPresence(data.status);
+        if (p.text) wrap.appendChild(node('div', 'mi-status ' + p.cls, L(p.text)));
+        var posts = data.view.posts;
+        if (momentsComposer && !findById(posts, momentsComposer.postId)) momentsComposer = null;
+        wrap.appendChild(moStories(data));
+        if (!posts.length) {
+            moDeck = null;
+            wrap.appendChild(renderMomentsEmpty(data.view.circleKnown));
+            return wrap;
+        }
+        var deck = node('div', 'mi-deck');
+        var track = deck.appendChild(node('div', 'mi-track'));
+        var cards = posts.map(function (post) { return track.appendChild(renderCard(data, post)); });
+        wrap.appendChild(deck);
+        var pager = moPager(posts.length);
+        wrap.appendChild(pager);
+        moDeck = { deck: deck, track: track, cards: cards, posts: posts, index: moIndexOf(posts, momentsAt), w: 0, cardW: 0,
+            count: pager.querySelector('.mi-count'), dots: pager.querySelector('.mi-dots'),
+            prev: pager.querySelector('.mi-arrow.prev'), next: pager.querySelector('.mi-arrow.next') };
+        moBindDeck();
         return wrap;
     }
 
     // Same feed, same open panels: the page on screen is current and must not be rebuilt.
     function momentsRenderKey(data) {
         // The game day too: "Today" and "Yesterday" move on with it.
+        var open = [];
+        for (var k in momentsOpenComments) if (momentsOpenComments[k]) open.push(k);
         return data.key + '|' + (data.env ? data.env.day : '') + '|' + (data.portraitRev || 0) + '|' + (momentsComposeOpen ? '1' : '0') + '|' +
             (momentsComposer ? momentsComposer.postId + '/' + momentsComposer.commentId : '') + '|' +
-            (momentsMenuPost || '') + '|' + (momentsConfirmDelete || '');
+            (momentsMenuPost || '') + '|' + (momentsConfirmDelete || '') + '|' + open.join(',') + '|' +
+            (moPhoto ? moPhoto.id : '') + '|' + (moPhotoPending ? 'p' : '') + '|' + phoneLang;
     }
-
     // ------------------------------------------------------------------
     // Screen transitions (iPhone style)
     // ------------------------------------------------------------------
@@ -9971,6 +12388,7 @@
             var s = r[0] && typeof r[0] === 'object' ? r[0] : null;
             var d = r[1] && typeof r[1] === 'object' ? r[1] : null;
             aiNoteSetup(s, d);
+            if (d && typeof d.heartbeat === 'number') smsServiceSeen(d.heartbeat);
             if (!d || typeof d.heartbeat !== 'number') return s;
             if (Date.now() - d.heartbeat > AI_STALE_MS) return s;
             if (s && typeof s.heartbeat === 'number' && Date.now() - s.heartbeat <= AI_STALE_MS) return s;
@@ -10042,9 +12460,9 @@
         aiCopying = true;
         aiCopyResult = null;
         call('clipboard.copy', { text: AI_DOWNLOAD_URL }).then(function () {
-            aiCopyResult = { ok: true, text: 'Link copied. Paste it into your browser. / 已复制，粘贴到浏览器即可。' };
+            aiCopyResult = { ok: true, text: aiBi('Link copied. Paste it into your browser.', '已复制，粘贴到浏览器即可。') };
         }, function () {
-            aiCopyResult = { ok: false, text: 'Could not copy here. Type the address above into your browser. / 复制失败，请在浏览器里输入上面的地址。' };
+            aiCopyResult = { ok: false, text: aiBi('Could not copy here. Type the address above into your browser.', '复制失败，请在浏览器里输入上面的地址。') };
         }).then(function () {
             aiCopying = false;
             aiRerender();
@@ -10057,26 +12475,27 @@
         return aiSetup.state ? aiSetup.state === 'stopped' : !!(s || aiSetup.seen);
     }
 
-    function aiZh(text) { return node('div', 'ai-detail ai-zh', text); }
+    // The setup cards were written in both languages; the phone's language picks one.
+    function aiBi(en, zh) { return phoneLang === 'zh' ? zh : en; }
 
     // The status card and the download steps for a phone without a running service.
     function aiSetupCards(wrap, stopped) {
         var status = card('AI PHONE SERVICE');
         if (stopped) {
-            status.appendChild(node('div', 'ai-state err', 'Not running'));
-            status.appendChild(node('div', 'ai-detail', 'AI Phone Service is not running on this PC. Open "inZOI AI Phone" from the Windows Start menu to start it. After that it starts by itself whenever you sign in to Windows.'));
-            status.appendChild(aiZh('AI 手机服务没有在运行。请从 Windows 开始菜单打开“inZOI AI 手机”。之后每次登录 Windows 都会自动启动。'));
-            status.appendChild(node('div', 'ai-hint', 'Uninstalled it? Get it again below. / 已经卸载了？在下面重新下载。'));
+            status.appendChild(node('div', 'ai-state err', aiBi('Not running', '没有运行')));
+            status.appendChild(node('div', 'ai-detail', aiBi('AI Phone Service is not running on this PC. Open "inZOI AI Phone" from the Windows Start menu to start it. After that it starts by itself whenever you sign in to Windows.',
+                'AI 手机服务没有在运行。请从 Windows 开始菜单打开“inZOI AI 手机”。之后每次登录 Windows 都会自动启动。')));
+            status.appendChild(node('div', 'ai-hint', aiBi('Uninstalled it? Get it again below.', '已经卸载了？在下面重新下载。')));
         } else {
-            status.appendChild(node('div', 'ai-state warn', 'One more step'));
-            status.appendChild(node('div', 'ai-detail', 'The phone is installed, but AI Phone Service, which writes your family\'s replies, is not on this PC yet. It is one free download.'));
-            status.appendChild(aiZh('手机已经装好，但电脑上还没有负责 AI 回复的 AI 手机服务。免费下载安装一次就好。'));
+            status.appendChild(node('div', 'ai-state warn', aiBi('One more step', '还差一步')));
+            status.appendChild(node('div', 'ai-detail', aiBi('The phone is installed, but AI Phone Service, which writes your family\'s replies, is not on this PC yet. It is one free download.',
+                '手机已经装好，但电脑上还没有负责 AI 回复的 AI 手机服务。免费下载安装一次就好。')));
         }
         wrap.appendChild(status);
 
         var get = card(stopped ? 'DOWNLOAD AGAIN' : 'GET AI PHONE SERVICE');
         var copyRow = node('div', 'ph-btns ai-step-btns');
-        var copy = aiButton(aiCopying ? 'Copying...' : 'Copy link', 'on', !aiCopying, aiCopyLink);
+        var copy = aiButton(aiCopying ? L('Copying...') : L('Copy link'), 'on', !aiCopying, aiCopyLink);
         copy.className += ' last';
         copyRow.appendChild(copy);
         var first = [copyRow, node('div', 'ai-url', AI_DOWNLOAD_URL.replace(/^https:\/\//, ''))];
@@ -10089,8 +12508,8 @@
         wrap.appendChild(get);
 
         var after = card('THEN');
-        after.appendChild(node('div', 'ai-detail', 'Pick an AI provider such as DeepSeek on this page and add your own API key. AI Phone is free; the provider bills your own account.'));
-        after.appendChild(aiZh('在这一页选择 AI 服务商（如 DeepSeek），填入你自己的 API 密钥。AI 手机本身免费，AI 调用费用由你自己的账号承担。'));
+        after.appendChild(node('div', 'ai-detail', aiBi('Pick an AI provider such as DeepSeek on this page and add your own API key. AI Phone is free; the provider bills your own account.',
+            '在这一页选择 AI 服务商（如 DeepSeek），填入你自己的 API 密钥。AI 手机本身免费，AI 调用费用由你自己的账号承担。')));
         wrap.appendChild(after);
     }
 
@@ -10098,8 +12517,7 @@
         var row = node('div', 'ai-step');
         row.appendChild(node('div', 'ai-step-n', n));
         var text = node('div', 'ai-step-text');
-        text.appendChild(node('div', 'ai-detail', en));
-        text.appendChild(aiZh(zh));
+        text.appendChild(node('div', 'ai-detail', aiBi(en, zh)));
         (extras || []).forEach(function (x) { text.appendChild(x); });
         row.appendChild(text);
         return row;
@@ -10163,7 +12581,7 @@
             if (r && r.id === aiPending.id && !r.pending) {
                 var asked = aiPending;
                 aiPending = null;
-                aiResult = { ok: !!r.ok, type: asked.type, text: String(r.message || (r.ok ? 'Done.' : 'That did not work.')) };
+                aiResult = { ok: !!r.ok, type: asked.type, text: String(r.message || (r.ok ? L('Done.') : L('That did not work.'))) };
                 if (asked.type === 'models' && r.ok && Array.isArray(r.models)) aiModels[asked.provider] = r.models.slice(0, 300);
                 if ((asked.type === 'paste_key' || asked.type === 'set_key') && r.ok && r.saved && aiDraft && aiDraft.provider === asked.provider && aiDiffers()) {
                     // The key is for the provider picked here: start using that provider now.
@@ -10171,7 +12589,7 @@
                 }
             } else if (Date.now() - aiPending.at > AI_REQUEST_MS) {
                 aiPending = null;
-                aiResult = { ok: false, text: 'No answer from AI Phone Service. Check that it is running on this PC.' };
+                aiResult = { ok: false, text: L('No answer from AI Phone Service. Check that it is running on this PC.') };
             }
         }
         if (aiSaving) {
@@ -10182,11 +12600,11 @@
                     aiResult = { ok: false, text: String(s.controlError) };
                 } else {
                     aiDraft = null;
-                    if (!quiet) aiResult = { ok: true, text: 'Saved.' };
+                    if (!quiet) aiResult = { ok: true, text: L('Saved.') };
                 }
             } else if (Date.now() - aiSaving.at > AI_SAVE_MS) {
                 aiSaving = null;
-                aiResult = { ok: false, text: 'AI Phone Service did not pick up the change. Check that it is running on this PC.' };
+                aiResult = { ok: false, text: L('AI Phone Service did not pick up the change. Check that it is running on this PC.') };
             }
         }
     }
@@ -10225,15 +12643,15 @@
         var model = d.model.trim();
         var url = d.base_url.trim();
         if (!p) {
-            aiResult = { ok: false, text: 'Pick a provider.' };
+            aiResult = { ok: false, text: L('Pick a provider.') };
             return aiRerender();
         }
         if (!AI_MODEL_RE.test(model)) {
-            aiResult = { ok: false, text: model ? 'That model name has characters a model name cannot have.' : 'Enter or pick a model.' };
+            aiResult = { ok: false, text: model ? L('That model name has characters a model name cannot have.') : L('Enter or pick a model.') };
             return aiRerender();
         }
         if (p.custom && !/^https?:\/\/\S+$/i.test(url)) {
-            aiResult = { ok: false, text: 'Enter the address of the server, starting with https://' };
+            aiResult = { ok: false, text: L('Enter the address of the server, starting with https://') };
             return aiRerender();
         }
         var rev = Date.now();
@@ -10252,7 +12670,7 @@
             refresh();
         }, function (err) {
             aiSaving = null;
-            aiResult = { ok: false, text: 'Could not save: ' + errText(err) };
+            aiResult = { ok: false, text: L('Could not save: {why}', { why: errText(err) }) };
             aiRerender();
         });
         aiRerender();
@@ -10272,7 +12690,7 @@
             refresh();
         }, function (err) {
             aiSaving = null;
-            aiResult = { ok: false, text: 'Could not switch: ' + errText(err) };
+            aiResult = { ok: false, text: L('Could not switch: {why}', { why: errText(err) }) };
             aiRerender();
         });
         aiRerender();
@@ -10281,12 +12699,12 @@
     function aiRequest(type, key) {
         if (!aiAlive(aiService) || aiPending) return;
         if (!aiTakesRequests(aiService)) {
-            aiResult = { ok: false, text: AI_NO_GUARDIAN };
+            aiResult = { ok: false, text: L(AI_NO_GUARDIAN) };
             return aiRerender();
         }
         // One request at a time goes to the service; request.cfg has room for only one.
         if (wallPending || smsPhotoPending) {
-            aiResult = { ok: false, text: wallPending ? 'Finish choosing the wallpaper picture on the PC first.' : 'Finish choosing the Texts photo on the PC first.' };
+            aiResult = { ok: false, text: wallPending ? L('Finish choosing the wallpaper picture on the PC first.') : L('Finish choosing the Texts photo on the PC first.') };
             return aiRerender();
         }
         var d = aiDraft || aiSynced();
@@ -10303,7 +12721,7 @@
             refresh();
         }, function (err) {
             aiPending = null;
-            aiResult = { ok: false, text: 'Could not send: ' + errText(err) };
+            aiResult = { ok: false, text: L('Could not send: {why}', { why: errText(err) }) };
             aiRerender();
         });
         aiRerender();
@@ -10315,7 +12733,7 @@
         aiKeyDraft = '';
         if (f) f.value = '';
         if (!key) {
-            aiResult = { ok: false, text: 'Type or paste the key first.' };
+            aiResult = { ok: false, text: L('Type or paste the key first.') };
             return aiRerender();
         }
         aiRequest('set_key', key);
@@ -10341,15 +12759,15 @@
     function aiStateView(s) {
         var st = s.state;
         if (st === 'running') {
-            if (s.ai && s.ai.ok === false) return { cls: 'err', text: 'Running, last reply failed', detail: s.ai.message || '' };
-            return { cls: 'on', text: 'Running', detail: 'Texts and Moments are answered by ' + ((aiProvider(s.provider) || {}).label || s.provider) + ' ' + s.model + '.' };
+            if (s.ai && s.ai.ok === false) return { cls: 'err', text: L('Running, last reply failed'), detail: s.ai.message || '' };
+            return { cls: 'on', text: L('Running'), detail: L('Texts and Moments are answered by {who}.', { who: ((aiProvider(s.provider) || {}).label || s.provider) + ' ' + s.model }) };
         }
-        if (st === 'starting') return { cls: 'on', text: 'Starting...', detail: '' };
-        if (st === 'needs_key') return { cls: 'warn', text: 'Needs an API key', detail: s.error || '' };
-        if (st === 'disabled') return { cls: 'off', text: 'Off', detail: 'Characters do not answer texts while AI is off.' };
-        if (st === 'waiting_game') return { cls: 'err', text: 'Cannot reach the game', detail: s.error || '' };
-        if (st === 'stopped') return { cls: 'off', text: 'Stopped', detail: s.error || '' };
-        return { cls: 'err', text: 'Problem', detail: s.error || '' };
+        if (st === 'starting') return { cls: 'on', text: L('Starting...'), detail: '' };
+        if (st === 'needs_key') return { cls: 'warn', text: L('Needs an API key'), detail: s.error || '' };
+        if (st === 'disabled') return { cls: 'off', text: L('Off'), detail: L('Characters do not answer texts while AI is off.') };
+        if (st === 'waiting_game') return { cls: 'err', text: L('Cannot reach the game'), detail: s.error || '' };
+        if (st === 'stopped') return { cls: 'off', text: L('Stopped'), detail: s.error || '' };
+        return { cls: 'err', text: L('Problem'), detail: s.error || '' };
     }
 
     function aiRenderKey(data) {
@@ -10436,9 +12854,9 @@
         var mine = !aiSaving && type === 'diagnose';
         var text = '';
         if (mine === !!diagnose) {
-            text = aiSaving ? 'Saving...' : aiPending ? (aiPending.type === 'paste_key' || aiPending.type === 'set_key' ? 'Checking the key with the provider...'
-                : aiPending.type === 'models' ? 'Asking the provider for its models...' : aiPending.type === 'test' ? 'Testing the connection...'
-                    : aiPending.type === 'diagnose' ? 'Collecting logs and settings...' : 'Working...') : aiResult ? aiResult.text : '';
+            text = aiSaving ? L('Saving...') : aiPending ? (aiPending.type === 'paste_key' || aiPending.type === 'set_key' ? L('Checking the key with the provider...')
+                : aiPending.type === 'models' ? L('Asking the provider for its models...') : aiPending.type === 'test' ? L('Testing the connection...')
+                    : aiPending.type === 'diagnose' ? L('Collecting logs and settings...') : L('Working...')) : aiResult ? aiResult.text : '';
         }
         var cls = aiSaving || aiPending || !text ? 'ai-result' : aiResult ? (aiResult.ok ? 'ai-result ok' : 'ai-result err') : 'ai-result';
         var line = node('div', cls, text);
@@ -10486,22 +12904,22 @@
         var c = card('USAGE');
         var hour = u.hour || {};
         var today = u.today || {};
-        var head = String(hour.calls || 0) + (u.limit ? ' of ' + u.limit : '') + ' AI calls';
+        var head = u.limit ? L('{n} of {limit} AI calls', { n: hour.calls || 0, limit: u.limit }) : L('{n} AI calls', { n: hour.calls || 0 });
         c.appendChild(node('div', 'ai-usage-big', head));
-        c.appendChild(node('div', 'ai-detail', 'in the last 60 minutes' + (u.priced ? ', about ' + aiMoney(hour.cost, u.currency) : '')));
-        if (hour.failed) c.appendChild(node('div', 'ai-detail st-warn', hour.failed + ' of them failed. Failed calls are not billed.'));
+        c.appendChild(node('div', 'ai-detail', u.priced ? L('in the last 60 minutes, about {cost}', { cost: aiMoney(hour.cost, u.currency) }) : L('in the last 60 minutes')));
+        if (hour.failed) c.appendChild(node('div', 'ai-detail st-warn', L('{n} of them failed. Failed calls are not billed.', { n: hour.failed })));
         if (u.limit && hour.calls >= u.limit * 0.8) {
             c.appendChild(node('div', 'ai-detail st-warn', hour.calls >= u.limit
-                ? 'The hourly cap is reached. Characters wait before they answer again.'
-                : 'Close to the hourly cap. When it is reached, characters wait before they answer again.'));
+                ? L('The hourly cap is reached. Characters wait before they answer again.')
+                : L('Close to the hourly cap. When it is reached, characters wait before they answer again.')));
         }
-        c.appendChild(node('div', 'ai-line', 'Today: ' + (today.calls || 0) + ' calls' + (u.priced ? ', about ' + aiMoney(today.cost, u.currency) : '')));
+        c.appendChild(node('div', 'ai-line', u.priced ? L('Today: {n} calls, about {cost}', { n: today.calls || 0, cost: aiMoney(today.cost, u.currency) }) : L('Today: {n} calls', { n: today.calls || 0 })));
         var purposes = Array.isArray(u.purposes) ? u.purposes : [];
         if (purposes.length) {
             var list = node('div', 'ai-usage-list');
             purposes.slice(0, AI_USAGE_TOP).forEach(function (p) {
                 var row = node('div', 'ai-usage-row');
-                row.appendChild(node('span', 'ai-usage-name', AI_PURPOSES[p.id] || p.id));
+                row.appendChild(node('span', 'ai-usage-name', L(AI_PURPOSES[p.id] || p.id)));
                 row.appendChild(node('span', 'ai-usage-count', String(p.calls) + (u.priced && p.cost ? ' \u00b7 ' + aiMoney(p.cost, u.currency) : '')));
                 list.appendChild(row);
             });
@@ -10509,23 +12927,24 @@
                 var rest = 0;
                 purposes.slice(AI_USAGE_TOP).forEach(function (p) { rest += p.calls; });
                 var more = node('div', 'ai-usage-row');
-                more.appendChild(node('span', 'ai-usage-name', 'Everything else'));
+                more.appendChild(node('span', 'ai-usage-name', L('Everything else')));
                 more.appendChild(node('span', 'ai-usage-count', String(rest)));
                 list.appendChild(more);
             }
             c.appendChild(list);
         }
-        c.appendChild(node('div', 'ai-hint', 'Tokens in the last 60 minutes: ' + aiTokens(hour.prompt) + ' sent (' + aiTokens(hour.cached) + ' from cache), ' + aiTokens(hour.completion) + ' received.'));
+        c.appendChild(node('div', 'ai-hint', L('Tokens in the last 60 minutes: {sent} sent ({cached} from cache), {got} received.', { sent: aiTokens(hour.prompt), cached: aiTokens(hour.cached), got: aiTokens(hour.completion) })));
         var note;
         if (!u.priced) {
-            note = 'No price is known for this model, so only calls and tokens are shown. To see a cost, add "price" under "llm" in config.json, for example "price": {"input": 2, "cached": 0.5, "output": 8, "currency": "CNY"} (per million tokens).';
+            note = L('No price is known for this model, so only calls and tokens are shown. To see a cost, add "price" under "llm" in config.json, for example "price": {"input": 2, "cached": 0.5, "output": 8, "currency": "CNY"} (per million tokens).');
         } else if (u.priceSource === 'config') {
-            note = 'Cost uses the prices set in config.json. It is an estimate; the bill on the provider\'s website is the real figure.';
+            note = L('Cost uses the prices set in config.json. It is an estimate; the bill on the provider’s website is the real figure.');
         } else {
-            note = 'Cost uses DeepSeek\'s published prices' + (u.peak === true ? ', peak hours now (full price)' : u.peak === false ? ', off-peak now (half price)' : '') +
-                '. It is an estimate; the bill on the provider\'s website is the real figure.';
+            note = u.peak === true ? L('Cost uses DeepSeek’s published prices, peak hours now (full price). It is an estimate; the bill on the provider’s website is the real figure.')
+                : u.peak === false ? L('Cost uses DeepSeek’s published prices, off-peak now (half price). It is an estimate; the bill on the provider’s website is the real figure.')
+                : L('Cost uses DeepSeek’s published prices. It is an estimate; the bill on the provider’s website is the real figure.');
         }
-        if (u.priced && hour.unpriced) note += ' ' + hour.unpriced + ' call(s) came back without token counts and are not in the cost.';
+        if (u.priced && hour.unpriced) note += ' ' + L('{n} call(s) came back without token counts and are not in the cost.', { n: hour.unpriced });
         c.appendChild(node('div', 'ai-hint', note));
         return c;
     }
@@ -10534,12 +12953,12 @@
         var c = card('SUPPORT');
         var btns = node('div', 'ph-btns');
         btns.style.marginTop = '0';
-        var b = aiButton('Export diagnostics', '', !aiPending, function () { aiRequest('diagnose'); });
+        var b = aiButton(L('Export diagnostics'), '', !aiPending, function () { aiRequest('diagnose'); });
         b.className += ' last';
         btns.appendChild(b);
         c.appendChild(btns);
         c.appendChild(aiResultLine(true));
-        c.appendChild(node('div', 'ai-hint', 'Saves the recent logs and settings as one zip file in Documents\\inZOI\\AI Phone Diagnostics. API keys are removed from it. The chat messages stay in, so the problem can be traced. Send the zip together with what happened and roughly when.'));
+        c.appendChild(node('div', 'ai-hint', L('Saves the recent logs and settings as one zip file in Documents\\inZOI\\AI Phone Diagnostics. API keys are removed from it. The chat messages stay in, so the problem can be traced. Send the zip together with what happened and roughly when.')));
         return c;
     }
 
@@ -10562,8 +12981,8 @@
         if (view.detail) status.appendChild(node('div', 'ai-detail', view.detail));
         var onOff = node('div', 'ph-btns');
         var enabled = s.enabled !== false;
-        onOff.appendChild(aiButton('On', enabled ? 'on' : '', !aiSaving, function () { aiSwitch(true); }));
-        var off = aiButton('Off', enabled ? '' : 'on', !aiSaving, function () { aiSwitch(false); });
+        onOff.appendChild(aiButton(L('On'), enabled ? 'on' : '', !aiSaving, function () { aiSwitch(true); }));
+        var off = aiButton(L('Off'), enabled ? '' : 'on', !aiSaving, function () { aiSwitch(false); });
         off.className += ' last';
         onOff.appendChild(off);
         status.appendChild(onOff);
@@ -10574,22 +12993,22 @@
         var providerCard = card('PROVIDER');
         var pchips = node('div', 'ph-chips');
         aiProviders().forEach(function (item) {
-            pchips.appendChild(aiChip(item.label, item.id === d.provider, function () { aiPickProvider(item.id); }, aiKeyOf(item.id).set));
+            pchips.appendChild(aiChip(L(item.label), item.id === d.provider, function () { aiPickProvider(item.id); }, aiKeyOf(item.id).set));
         });
         providerCard.appendChild(pchips);
-        providerCard.appendChild(node('div', 'ai-hint', 'A green dot means a key is saved for that provider.'));
+        providerCard.appendChild(node('div', 'ai-hint', L('A green dot means a key is saved for that provider.')));
         wrap.appendChild(providerCard);
         if (!p) return wrap;
 
         var key = aiKeyOf(p.id);
         var keyCard = card('API KEY');
-        keyCard.appendChild(node('div', 'ai-line', key.set ? 'Saved: ' + (key.hint || 'yes') : 'No key saved for ' + p.label + '.'));
+        keyCard.appendChild(node('div', 'ai-line', key.set ? L('Saved: {hint}', { hint: key.hint || L('yes') }) : L('No key saved for {who}.', { who: p.label })));
         var keyBtns = node('div', 'ph-btns');
-        var paste = aiButton('Paste key', 'on', !aiPending, function () { aiRequest('paste_key'); });
+        var paste = aiButton(L('Paste key'), 'on', !aiPending, function () { aiRequest('paste_key'); });
         keyBtns.appendChild(paste);
         if (key.set) {
             var asking = aiConfirmForget === p.id;
-            var forget = aiButton(asking ? 'Tap to confirm' : 'Remove key', asking ? 'warn' : '', !aiPending, function () {
+            var forget = aiButton(asking ? L('Tap to confirm') : L('Remove key'), asking ? 'warn' : '', !aiPending, function () {
                 if (aiConfirmForget === p.id) {
                     aiConfirmForget = '';
                     aiRequest('forget_key');
@@ -10605,8 +13024,8 @@
         }
         keyCard.appendChild(keyBtns);
         var typeRow = node('div', 'ai-row');
-        typeRow.appendChild(aiInput('ai-key', 'password', aiKeyDraft, 'Or type the key here', AI_KEY_MAX, function (v) { aiKeyDraft = v; }, aiSubmitKey));
-        var saveKey = node('button', 'mo-btn' + (aiPending ? ' mo-btn-off' : ''), 'Save');
+        typeRow.appendChild(aiInput('ai-key', 'password', aiKeyDraft, L('Or type the key here'), AI_KEY_MAX, function (v) { aiKeyDraft = v; }, aiSubmitKey));
+        var saveKey = node('button', 'mo-btn' + (aiPending ? ' mo-btn-off' : ''), L('Save'));
         saveKey.setAttribute('type', 'button');
         onTap(saveKey, function (e) {
             e.stopPropagation();
@@ -10614,8 +13033,8 @@
         });
         typeRow.appendChild(saveKey);
         keyCard.appendChild(typeRow);
-        keyCard.appendChild(node('div', 'ai-hint', (p.key_site ? 'Create a key at ' + p.key_site + ' and copy it. ' : '') +
-            'Paste key reads the key from the Windows clipboard. It is checked with the provider, then stored encrypted on this PC and never shown again.'));
+        keyCard.appendChild(node('div', 'ai-hint', (p.key_site ? L('Create a key at {site} and copy it. ', { site: p.key_site }) : '') +
+            L('Paste key reads the key from the Windows clipboard. It is checked with the provider, then stored encrypted on this PC and never shown again.')));
         wrap.appendChild(keyCard);
 
         if (p.custom) {
@@ -10626,7 +13045,7 @@
                 aiSync();
             }));
             urlCard.appendChild(urlRow);
-            urlCard.appendChild(node('div', 'ai-hint', 'Any server that speaks the OpenAI chat completions protocol. http:// is allowed only for a server on this PC.'));
+            urlCard.appendChild(node('div', 'ai-hint', L('Any server that speaks the OpenAI chat completions protocol. http:// is allowed only for a server on this PC.')));
             wrap.appendChild(urlCard);
         }
 
@@ -10650,16 +13069,16 @@
             });
             modelCard.appendChild(mchips);
             if (listed.length > AI_MODEL_CHIPS) {
-                modelCard.appendChild(node('div', 'ai-hint', 'Showing ' + AI_MODEL_CHIPS + ' of ' + listed.length + ' models. Type any other name below.'));
+                modelCard.appendChild(node('div', 'ai-hint', L('Showing {n} of {all} models. Type any other name below.', { n: AI_MODEL_CHIPS, all: listed.length })));
             }
         }
         var modelRow = node('div', 'ai-row');
-        modelRow.appendChild(aiInput('ai-model', 'text', d.model, 'Model name', 128, function (v) {
+        modelRow.appendChild(aiInput('ai-model', 'text', d.model, L('Model name'), 128, function (v) {
             d.model = v;
             aiSync();
         }));
         var canList = !aiPending && (key.set || (p.custom && aiLocalUrl(d.base_url)));
-        var fetchBtn = node('button', 'mo-btn mo-btn-plain' + (canList ? '' : ' mo-btn-off'), 'Fetch list');
+        var fetchBtn = node('button', 'mo-btn mo-btn-plain' + (canList ? '' : ' mo-btn-off'), L('Fetch list'));
         fetchBtn.setAttribute('type', 'button');
         onTap(fetchBtn, function (e) {
             e.stopPropagation();
@@ -10667,35 +13086,35 @@
         });
         modelRow.appendChild(fetchBtn);
         modelCard.appendChild(modelRow);
-        modelCard.appendChild(node('div', 'ai-hint', 'Fetch list asks the provider which models your key can use.'));
+        modelCard.appendChild(node('div', 'ai-hint', L('Fetch list asks the provider which models your key can use.')));
         wrap.appendChild(modelCard);
 
         var thinkCard = card('DEEP THINKING');
         var tchips = node('div', 'ph-chips');
         AI_THINKING.forEach(function (t) {
-            tchips.appendChild(aiChip(t.label, d.thinking === t.id, function () {
+            tchips.appendChild(aiChip(L(t.label), d.thinking === t.id, function () {
                 d.thinking = t.id;
                 aiRerender();
             }));
         });
         thinkCard.appendChild(tchips);
-        thinkCard.appendChild(node('div', 'ai-hint', 'Off answers fastest and costs least. Higher levels think longer before each reply and use more of your credit. Models that cannot switch it off use the lowest level they allow.'));
+        thinkCard.appendChild(node('div', 'ai-hint', L('Off answers fastest and costs least. Higher levels think longer before each reply and use more of your credit. Models that cannot switch it off use the lowest level they allow.')));
         wrap.appendChild(thinkCard);
 
         var actions = card();
         var actionBtns = node('div', 'ph-btns');
         actionBtns.style.marginTop = '0';
-        var save = aiButton('Save', 'on', true, function () {
+        var save = aiButton(L('Save'), 'on', true, function () {
             if (aiDiffers() && !aiSaving) aiSaveControl(false);
         });
         save.id = 'ai-save';
         actionBtns.appendChild(save);
-        var test = aiButton('Test connection', '', !aiPending, function () { aiRequest('test'); });
+        var test = aiButton(L('Test connection'), '', !aiPending, function () { aiRequest('test'); });
         test.className += ' last';
         actionBtns.appendChild(test);
         actions.appendChild(actionBtns);
         actions.appendChild(aiResultLine());
-        actions.appendChild(node('div', 'ai-version', 'AI Phone Service ' + (s.version || '') + (s.installed ? '' : ' (development copy)')));
+        actions.appendChild(node('div', 'ai-version', L('AI Phone Service') + ' ' + (s.version || '') + (s.installed ? '' : L(' (development copy)'))));
         wrap.appendChild(actions);
         wrap.appendChild(aiSupportCard());
         setTimeout(aiSync, 0);
@@ -10718,6 +13137,10 @@
             wf.content.scrollTop = at;
             return;
         }
+        if (current === 'language') {
+            show(renderLanguage({}));
+            return;
+        }
         if (current !== 'sounds') return;
         var top = wf.content.scrollTop;
         show(renderSounds({}));
@@ -10728,7 +13151,9 @@
         var tile = node('div', 'st-nav-icon st-ic-' + id);
         var svg = glyphSvg('0 0 24 24');
         svg.setAttribute('class', 'st-nav-glyph');
-        if (id === 'study') {
+        if (id === 'language') {
+            glyphPath(svg, 'M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zm6.8 7.7h-3.1a13 13 0 0 0-1.3-5.3 6.9 6.9 0 0 1 4.4 5.3zM12 5.1c.9 1.2 1.9 3.3 2.1 6.1H9.9c.2-2.8 1.2-4.9 2.1-6.1zM9.6 5.9a13 13 0 0 0-1.3 5.3H5.2a6.9 6.9 0 0 1 4.4-5.3zm-4.4 6.9h3.1a13 13 0 0 0 1.3 5.3 6.9 6.9 0 0 1-4.4-5.3zm6.8 6.1c-.9-1.2-1.9-3.3-2.1-6.1h4.2c-.2 2.8-1.2 4.9-2.1 6.1zm2.4-.8a13 13 0 0 0 1.3-5.3h3.1a6.9 6.9 0 0 1-4.4 5.3z', '#ffffff', 'evenodd');
+        } else if (id === 'study') {
             glyphPath(svg, 'M4 5.2C6.6 4.4 9.4 4.6 12 6c2.6-1.4 5.4-1.6 8-.8v13c-2.6-.8-5.4-.6-8 .8-2.6-1.4-5.4-1.6-8-.8v-13z', '#ffffff');
             glyphPath(svg, 'M11.3 6.8h1.4v11.4h-1.4z', '#FF9500');
         } else if (id === 'sounds') {
@@ -10746,7 +13171,7 @@
     function settingsNavRow(id, value, first) {
         var row = node('div', 'st-nav' + (first ? ' first' : ''));
         row.appendChild(settingsIcon(id));
-        row.appendChild(node('div', 'st-nav-label', TITLES[id]));
+        row.appendChild(node('div', 'st-nav-label', L(TITLES[id])));
         row.appendChild(node('div', 'st-nav-value', value));
         row.appendChild(node('div', 'st-nav-chev', '>'));
         onTap(row, function (e) {
@@ -10762,9 +13187,34 @@
         var list = card();
         list.className += ' st-nav-card';
         var s = soundSettings;
-        list.appendChild(settingsNavRow('sounds', s.enabled ? s.volume + '%' : 'Off', true));
+        list.appendChild(settingsNavRow('language', langOf(phoneLang).name, true));
+        list.appendChild(settingsNavRow('sounds', s.enabled ? s.volume + '%' : L('Off')));
         list.appendChild(settingsNavRow('wallpaper', wallActive().label));
-        list.appendChild(settingsNavRow('study', studySettings.enabled ? STUDY_LEVELS[studySettings.level - 1].short : '关'));
+        list.appendChild(settingsNavRow('study', studySettings.enabled ? STUDY_LEVELS[studySettings.level - 1].short : L('关')));
+        wrap.appendChild(list);
+        return wrap;
+    }
+
+    // Settings > Language: the phone's own words in Chinese or English (01-lang.js). Each
+    // language is named in itself, so it can be found whichever one the phone is in now.
+    function renderLanguage() {
+        var wrap = node('div');
+        wrap.appendChild(subHeader('language'));
+        var list = card();
+        LANGS.forEach(function (lang, i) {
+            var on = lang.id === phoneLang;
+            var row = node('div', 'st-row st-level' + (on ? ' on' : '') + (i ? '' : ' first'));
+            var who = row.appendChild(node('div', 'st-level-who'));
+            who.appendChild(node('div', 'st-label', lang.name));
+            who.appendChild(node('div', 'st-level-text', lang.note));
+            row.appendChild(node('div', 'st-level-tick', on ? '✓' : ''));
+            onTap(row, function (e) {
+                e.stopPropagation();
+                langSet(lang.id);
+            });
+            list.appendChild(row);
+        });
+        list.appendChild(node('div', 'ai-hint', L('The phone’s own words. What your family texts you stays in the language they write in.')));
         wrap.appendChild(list);
         return wrap;
     }
@@ -12550,6 +15000,104 @@
         txSplashReveal();
     }
 
+    // ---- Moments splash ----
+    // Moments opens on a veil of its own: the Texts one's frame (the phone's light or dark surface,
+    // Back, the home bar, a name and a line), but warm, with three photo cards that fan out and
+    // fold back like friends' pictures being flicked through, and it leaves by lifting and growing
+    // into the feed rather than only fading. The feed, its photos and portraits are read from the
+    // phone's files, so it is up between MM_SPLASH_MIN_MS and MM_SPLASH_MAX_MS.
+    var mmCurtain = null;
+    var MM_SPLASH_MIN_MS = 900;
+    var MM_SPLASH_MAX_MS = 2200;
+
+    function mmCurtainStop() {
+        var c = mmCurtain;
+        if (!c) return;
+        clearTimeout(c.timer);
+        clearTimeout(c.waitTimer);
+        if (c.veil.parentNode) c.veil.parentNode.removeChild(c.veil);
+        c.root.classList.remove('mm-covering');
+        mmCurtain = null;
+        if (c.phase !== 'revealing') traceNav('moments curtain dropped at ' + c.phase + ' for ' + c.screen);
+    }
+
+    function mmCurtainFade(target, ms, done) {
+        var c = mmCurtain;
+        if (!c) return;
+        fadeVeil(c.veil, target, ms, function () { return mmCurtain === c; }, done);
+    }
+
+    function mmCurtainOpen(screenId) {
+        mmCurtainStop();
+        ++openSeq;
+        awaitOpen(screenId);
+        var root = document.getElementById('app-root');
+        var veil = node('div', 'mm-cover');
+        veil.style.opacity = '0';
+        var back = veil.appendChild(node('button', 'tx-cover-back mm-cover-back', L('Back')));
+        var center = veil.appendChild(node('div', 'mm-cover-center'));
+        var stack = center.appendChild(node('div', 'mm-cover-stack'));
+        stack.appendChild(node('div', 'mm-cover-card c3'));
+        stack.appendChild(node('div', 'mm-cover-card c2'));
+        var front = stack.appendChild(node('div', 'mm-cover-card c1'));
+        front.appendChild(node('span', 'mm-cover-sun'));
+        front.appendChild(node('span', 'mm-cover-hill'));
+        center.appendChild(node('div', 'mm-cover-brand', 'MOMENTS'));
+        var label = center.appendChild(node('div', 'mm-cover-label', L('Catching up with friends')));
+        label.setAttribute('role', 'status');
+        veil.appendChild(node('div', 'tx-cover-home mm-cover-home'));
+        root.appendChild(veil);
+        root.classList.add('mm-covering');
+        var c = mmCurtain = { root: root, veil: veil, screen: screenId, phase: 'covering',
+            at: Date.now(), timer: 0, waitTimer: 0, pending: false };
+        onTap(back, function () { splashBack(mmCurtainStop, screenId); });
+        c.timer = setTimeout(function () {
+            if (mmCurtain !== c || c.phase === 'revealing') return;
+            mmSplashReveal();
+        }, MM_SPLASH_MAX_MS);
+        traceNav('moments cover ' + current + ' -> ' + screenId);
+        mmCurtainFade(1, 180, function () {
+            var k = mmCurtain;
+            if (!k || k !== c) return;
+            k.phase = 'loading';
+            openNow(screenId, null);
+            if (k.pending) mmSplashReveal();
+        });
+    }
+
+    function mmSplashReveal() {
+        var c = mmCurtain;
+        if (!c) return;
+        if (c.phase !== 'loading') { c.pending = true; return; }
+        var wait = MM_SPLASH_MIN_MS - (Date.now() - c.at);
+        if (wait > 0) {
+            if (!c.waitTimer) c.waitTimer = setTimeout(function () {
+                c.waitTimer = 0;
+                mmSplashReveal();
+            }, wait);
+            return;
+        }
+        c.phase = 'preparing';
+        nextFrame(function () { nextFrame(function () {
+            var k = mmCurtain;
+            if (!k || k !== c || k.phase !== 'preparing') return;
+            clearTimeout(k.timer);
+            k.phase = 'revealing';
+            k.veil.classList.add('mm-out');
+            traceNav('moments revealed +' + (Date.now() - k.at) + 'ms');
+            mmCurtainFade(0, 420, function () { mmCurtainStop(); });
+        }); });
+    }
+
+    function mmSplashCheck() {
+        var c = mmCurtain;
+        if (!c) return;
+        if (c.phase === 'covering') return;
+        if (c.screen !== current) { mmCurtainStop(); return; }
+        if (c.phase !== 'loading') return;
+        mmSplashReveal();
+    }
+
     // ---- Freelance splash ----
     // The board and the played character's career record come from two different places: the
     // service's board file and the game's own component. Opening Freelance therefore gets a real
@@ -12735,7 +15283,7 @@
         var root = document.getElementById('app-root');
         var veil = node('div', 'nw-cover');
         veil.style.opacity = '0';
-        var back = veil.appendChild(node('button', 'nw-cover-back', '< Back'));
+        var back = veil.appendChild(node('button', 'nw-cover-back', L('< Back')));
         veil.appendChild(node('div', 'nw-cover-disc outer'));
         veil.appendChild(node('div', 'nw-cover-disc'));
         var center = veil.appendChild(node('div', 'nw-cover-center'));
@@ -12880,7 +15428,7 @@
         var root = document.getElementById('app-root');
         var veil = node('div', 'oa-cover');
         veil.style.opacity = '0';
-        var back = veil.appendChild(node('button', 'oa-cover-back', '< Back'));
+        var back = veil.appendChild(node('button', 'oa-cover-back', L('< Back')));
         veil.appendChild(node('div', 'oa-cover-band'));
         var center = veil.appendChild(node('div', 'oa-cover-center'));
         var head = center.appendChild(node('div', 'oa-cover-head'));
@@ -14334,7 +16882,11 @@
         if (b.moments && b.moments.length) pages.push({ kind: 'moments', title: '日常点滴' });
         if (b.achievements && b.achievements.length) pages.push({ kind: 'achievements', title: '获得的成就' });
         if (b.character || (b.traits && b.traits.length)) pages.push({ kind: 'character', title: '长成的样子' });
-        if (b.letter) pages.push({ kind: 'letter', title: '写给你' });
+        // The family's own letters (lib/booklet.js familyLetters), a page each, signed; the
+        // booklet's own unsigned letter only when nobody in the family wrote one.
+        var letters = b.letters && b.letters.length ? b.letters : null;
+        if (letters) letters.forEach(function (l) { pages.push({ kind: 'family', title: (l.relation || l.first || '家人') + '的信', letter: l }); });
+        else if (b.letter) pages.push({ kind: 'letter', title: '写给你' });
         return pages;
     }
 
@@ -14375,6 +16927,13 @@
                 b.traits.forEach(function (t) { chips.appendChild(node('span', 'bk-chip', t)); });
             }
             if (b.character) body.appendChild(node('div', 'bk-note-text bk-gap', b.character));
+        } else if (page.kind === 'family') {
+            var l = page.letter;
+            body.appendChild(node('div', 'bk-letter', l.text));
+            var from = body.appendChild(node('div', 'bk-letter-from'));
+            var writer = memberById(data.members, l.id);
+            if (writer) from.appendChild(faceAvatar(writer));
+            from.appendChild(node('div', 'bk-letter-sign', '—— ' + (l.relation ? l.relation + ' ' : '') + l.name));
         } else if (page.kind === 'letter') {
             body.appendChild(node('div', 'bk-letter', b.letter));
             body.appendChild(node('div', 'bk-letter-sign', b.final ? '—— 这一生，谢谢你' : '—— 下一段，也要好好的'));
@@ -14568,6 +17127,8 @@
     });
 
     function bkStageRect(full) {
+        // While it is up the phone's window guard (window.js) must not give the screen away.
+        wf.root._screenHeld = !!full;
         try {
             if (full) {
                 inzoi.view.setContentRect(0, 0, window.innerWidth || 1920, window.innerHeight || 1080);
@@ -14635,6 +17196,7 @@
         if (page.kind === 'achievements') return b.achievements.slice();
         if (page.kind === 'character') return (b.traits || []).slice();
         if (page.kind === 'letter') return ['写给你'];
+        if (page.kind === 'family') return [page.title];
         return [b.name || b.stageZh];
     }
 
@@ -15734,6 +18296,14 @@
         var fancy = !!fx;
         function paintLeft(box) {
             var page = st.pages[st.page];
+            // A family member's letter is drawn by the style's picture for a letter, with their
+            // words; this page only (the booklet itself is st.book and stays as it is).
+            var b = st.book;
+            if (page.kind === 'family') {
+                b = Object.create(st.book);
+                b.letter = page.letter.text;
+                page = { kind: 'letter', title: page.title };
+            }
             while (box.firstChild) box.removeChild(box.firstChild);
             if (theme === 'child') bkArtChild(box, page, b, data);
             else if (theme === 'adult') bkArtAdult(box, page, b, data);
@@ -16623,11 +19193,11 @@
     // The apps of this phone
     // ------------------------------------------------------------------
     screens.home = { load: loadHome, render: renderHome };
-    registerApp({ id: 'family', label: 'Family', cls: 'ic-family', category: 'Household', version: '1.4',
-        desc: 'Your household at a glance', subtitle: 'Your household at a glance',
-        featured: 'Know how everyone at home is doing',
-        about: 'Everyone who lives with you on one page: their mood, how hungry, tired or lonely they are, and where they are right now.',
-        screens: { family: { load: loadFamily, render: renderFamily } } });
+    registerApp({ id: 'family', label: 'My Home', cls: 'ic-family', category: 'Household', version: '2.0',
+        desc: 'The floor plan of your home', subtitle: 'The floor plan of your home',
+        featured: 'See your home from above',
+        about: 'Your home drawn from the game, storey by storey: the walls, every room by name, the furniture, doors and windows, and where everyone at home is right now.',
+        screens: { family: { load: loadFamily, render: renderFamily }, homeRoom: { load: loadFamily, render: renderHomeRoom, title: '设定房间', parent: 'family' } } });
     registerApp({ id: 'bonds', label: 'Bonds', cls: 'ic-bonds', category: 'Household', version: '1.2',
         desc: 'Friendship, romance and family ties', subtitle: 'Friendship, romance and family ties',
         about: 'How close the character you play is to each person they know, as friendship, romance, family and business.',
@@ -16641,7 +19211,10 @@
             oa: { load: loadOa, render: renderOa, title: 'OA' },
             oaApply: { load: loadOa, render: renderOaApply, title: '发起申请', parent: 'oa' },
             oaOrg: { load: loadOa, render: renderOaOrg, title: '组织架构', parent: 'oa' },
-            oaPay: { load: loadOa, render: renderOaPay, title: '薪酬职级', parent: 'oa' }
+            oaPay: { load: loadOa, render: renderOaPay, title: '薪酬职级', parent: 'oa' },
+            oaManage: { load: loadOa, render: renderOaManage, title: '管理台', parent: 'oa' },
+            oaStaff: { load: loadOa, render: renderOaStaff, title: '员工详情', parent: 'oaManage' },
+            oaCand: { load: loadOa, render: renderOaCand, title: '简历', parent: 'oaManage' }
         } });
     registerApp({ id: 'school', label: '成绩', cls: 'ic-school', glyph: schoolGlyph, category: 'Education', version: '1.0',
         desc: '成绩单、课表和老师评语', subtitle: '成绩单、课表和老师评语',
@@ -16752,6 +19325,7 @@
         about: 'Phone sounds and the wallpaper, including your own pictures.',
         screens: {
             settings: { load: loadSettings, render: renderSettings },
+            language: { load: loadSettings, render: renderLanguage, title: 'Language', parent: 'settings' },
             sounds: { load: loadSettings, render: renderSounds, title: 'Sounds', parent: 'settings' },
             wallpaper: { load: loadWallpaper, render: renderWallpaper, title: 'Wallpaper', parent: 'settings' },
             study: { load: loadStudy, render: renderStudy, title: '雅思学习', parent: 'settings' }
@@ -17045,7 +19619,7 @@
                     if (screenId === 'messages') gmScroll();
                 }
                 dcReadyCurtain();
-                if (txCurtain) txSplashCheck();
+                if (txCurtain) txSplashCheck(); if (mmCurtain) mmSplashCheck();
                 if (flCurtain) flSplashCheck();
                 if (nwCurtain) nwSplashCheck();
                 if (oaCurtain) oaSplashCheck();
@@ -17076,7 +19650,7 @@
                 setNote(msg, true);
                 noteFromLoad = true;
                 if (dcCurtain) dcFailCurtain(dcCurtain);
-                if (txCurtain) txSplashCheck();
+                if (txCurtain) txSplashCheck(); if (mmCurtain) mmSplashCheck();
                 if (flCurtain) flSplashCheck();
                 if (nwCurtain) nwSplashCheck();
                 if (oaCurtain) oaSplashCheck();
@@ -17185,6 +19759,7 @@
             return;
         }
         if (txCurtain && screenId !== txCurtain.screen) txCurtainStop();
+        if (mmCurtain && screenId !== mmCurtain.screen) mmCurtainStop();
         if (flCurtain && screenId !== flCurtain.screen) flCurtainStop();
         if (nwCurtain && screenId !== nwCurtain.screen) nwCurtainStop();
         if (oaCurtain && screenId !== oaCurtain.screen) oaCurtainStop();
@@ -17192,6 +19767,12 @@
         if (!playedYoung && !dcCurtain && !txCurtain &&
             screenId === 'texts' && appOfScreen(current) !== 'texts') {
             txCurtainOpen(screenId);
+            return;
+        }
+        // Moments opens on its own warm veil with the fanning photo cards (index.html).
+        if (!playedYoung && !dcCurtain && !txCurtain && !mmCurtain &&
+            screenId === 'moments' && appOfScreen(current) !== 'moments') {
+            mmCurtainOpen(screenId);
             return;
         }
         // Freelance reads the service's board and the game's career record; the white network
@@ -17277,7 +19858,7 @@
         }
         var ghost = kind ? captureOutgoing(from) : null;
         if (!ghost) kind = null;
-        if (dcCurtain || txCurtain || flCurtain) {
+        if (dcCurtain || txCurtain || mmCurtain || flCurtain) {
             if (ghost) releaseOutgoing(ghost);
             ghost = null;
             kind = null;
@@ -17479,6 +20060,7 @@
     var VOICE_FRESH_MS = 8000;
     var VOICE_SEND_S = 2;
     var VOICE_ERRORS = { no_microphone: 'No microphone found', unclear: 'Didn\'t catch that, say it again' };
+    // VOICE_ERRORS and the notes below are shown through L() (01-lang.js).
     var voiceSeq = Date.now() * 10;
     var voiceStampAt = 0;
     var voiceTimer = null;
@@ -17528,7 +20110,7 @@
 
     function voiceCountdown(left) {
         if (left <= 0) { voiceSend(); return; }
-        voiceNote('Sending in ' + left + ' · press any key to edit', 'heard');
+        voiceNote(L('Sending in {n} · press any key to edit', { n: left }), 'heard');
         voiceWaiting = true;
         voiceTimer = setTimeout(function () { voiceTimer = null; voiceCountdown(left - 1); }, 1000);
     }
@@ -17585,7 +20167,7 @@
         if (voiceRec) {
             voiceAsk('stop');
             voiceRecEnd();
-            voiceNote('Working out what you said...', 'thinking');
+            voiceNote(L('Working out what you said...'), 'thinking');
             return;
         }
         var box = voiceBox();
@@ -17594,11 +20176,11 @@
         var started = voiceRec = Date.now();
         voiceHeard = false;
         voiceSyncField();
-        voiceNote('Listening... tap ■ when done', 'listening');
+        voiceNote(L('Listening... tap ■ when done'), 'listening');
         setTimeout(function () {
             if (voiceRec !== started || voiceHeard) return;
             voiceRecEnd();
-            voiceNote('Voice input is not running', 'err');
+            voiceNote(L('Voice input is not running'), 'err');
             voiceTimer = setTimeout(function () { voiceTimer = null; voiceNote(''); }, 3000);
         }, VOICE_START_WAIT_MS);
     }
@@ -17613,7 +20195,7 @@
         if (!mic) {
             mic = node('button', 'sms-mic');
             mic.type = 'button';
-            mic.setAttribute('title', 'Voice input');
+            mic.setAttribute('title', L('Voice input'));
             onTap(mic, function (e) { e.stopPropagation(); voiceMicTap(); }, { silent: true });
             field.appendChild(mic);
         }
@@ -17642,12 +20224,12 @@
         if (v.state !== 'listening' && voiceRec) voiceRecEnd();
         if (v.state === 'listening') {
             if (voiceRec) voiceHeard = true;
-            voiceNote(voiceRec ? 'Listening... tap ■ when done' : 'Listening... release ' + key, 'listening');
-        } else if (v.state === 'thinking') voiceNote('Working out what you said...', 'thinking');
+            voiceNote(voiceRec ? L('Listening... tap ■ when done') : L('Listening... release {key}', { key: key }), 'listening');
+        } else if (v.state === 'thinking') voiceNote(L('Working out what you said...'), 'thinking');
         else if (v.state === 'heard' && v.text) {
             if (voiceType(v.text)) voiceCountdown(VOICE_SEND_S);
         } else if (v.state === 'error') {
-            voiceNote(VOICE_ERRORS[v.why] || 'Voice input did not work', 'err');
+            voiceNote(L(VOICE_ERRORS[v.why] || 'Voice input did not work'), 'err');
             voiceTimer = setTimeout(function () { voiceTimer = null; voiceNote(''); }, 3000);
         } else voiceNote('');
     }
@@ -18115,7 +20697,8 @@
     wallInit();
     appsLoad();
     loadOutside();
-    open('home');
+    // The first screen is drawn in the saved language (01-lang.js).
+    langLoad().then(function () { open('home'); });
     setInterval(watchPlayed, POSSESS_POLL_MS);
     setInterval(watchBanner, BANNER_POLL_MS);
     setInterval(watchGmBanner, GM_BANNER_POLL_MS);

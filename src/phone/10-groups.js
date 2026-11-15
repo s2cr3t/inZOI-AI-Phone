@@ -320,7 +320,7 @@
     function grpName(meta, id) {
         if (meta && meta.memberNames && meta.memberNames[id]) return meta.memberNames[id];
         var p = memberById(grpKnown, id);
-        return p ? (p.first_name || fullName(p)) : 'Someone';
+        return p ? (p.first_name || fullName(p)) : L('Someone');
     }
 
     // A message's speaker as the page shows it: what the service stored, unless that is only an id.
@@ -403,11 +403,11 @@
                 if (lg && env) top.appendChild(node('div', 'sms-contact-time', env.day === lg.day ? smsGameClock(lg) : smsStamp(lg, env)));
             }
             who2.appendChild(top);
-            who2.appendChild(node('div', 'ph-sub', meta.members.length + ' people'));
+            who2.appendChild(node('div', 'ph-sub', L('{n} people', { n: meta.members.length })));
             var previewEl = node('div', 'sms-preview' + (row.unread > 0 ? ' new' : ''));
             var line = '';
-            if (row.last) line = (row.last.side === 'mine' ? 'You: ' : (row.last.name ? row.last.name + ': ' : '')) + String(row.last.text || '');
-            emojiFill(previewEl, smsClip(line || 'No messages yet', 40));
+            if (row.last) line = (row.last.side === 'mine' ? L('You: ') : (row.last.name ? row.last.name + ': ' : '')) + String(row.last.text || '');
+            emojiFill(previewEl, smsClip(line || L('No messages yet'), 40));
             who2.appendChild(previewEl);
             row2.appendChild(who2);
             card.appendChild(row2);
@@ -429,7 +429,7 @@
         wrap.appendChild(subHeader('groupNew', 'New Group'));
         var nameCard = card();
         var field = node('textarea', 'sms-gname');
-        field.setAttribute('placeholder', 'Group name (optional)');
+        field.setAttribute('placeholder', L('Group name (optional)'));
         field.setAttribute('maxlength', '20');
         field.setAttribute('rows', '1');
         field.value = grpNewName;
@@ -441,7 +441,7 @@
         var chosen = 0;
         Object.keys(grpNewSel).forEach(function (k) { if (grpNewSel[k]) chosen += 1; });
         var hint = card();
-        hint.appendChild(node('div', 'ph-sub', chosen ? chosen + ' chosen' : 'Choose two or more people'));
+        hint.appendChild(node('div', 'ph-sub', chosen ? L('{n} chosen', { n: chosen }) : L('Choose two or more people')));
         wrap.appendChild(hint);
 
         var listCard = card();
@@ -458,7 +458,7 @@
                 else {
                     var n = 0;
                     Object.keys(grpNewSel).forEach(function (k) { if (grpNewSel[k]) n += 1; });
-                    if (n >= SMS_G_MAX) { setNote('Up to ' + SMS_G_MAX + ' people in one group.', true); return; }
+                    if (n >= SMS_G_MAX) { setNote(L('Up to {n} people in one group.', { n: SMS_G_MAX }), true); return; }
                     grpNewSel[id] = true;
                     tick.className = 'sms-pick-tick on';
                     tick.textContent = '\u2713';
@@ -470,7 +470,7 @@
         });
         wrap.appendChild(listCard);
 
-        var go = node('button', 'ph-btn sms-gcreate' + (chosen >= 2 ? '' : ' off'), 'Create');
+        var go = node('button', 'ph-btn sms-gcreate' + (chosen >= 2 ? '' : ' off'), L('Create'));
         go.type = 'button';
         onTap(go, function (e) { e.stopPropagation(); createGroup(data); }, { silent: true });
         wrap.appendChild(go);
@@ -480,7 +480,7 @@
     function createGroup(data) {
         if (grpNewBusy) return;
         var ids = Object.keys(grpNewSel).filter(function (k) { return grpNewSel[k]; });
-        if (ids.length < 2) { setNote('Choose two or more people.', true); return; }
+        if (ids.length < 2) { setNote(L('Choose two or more people.'), true); return; }
         var name = String(grpNewName || '').replace(/^\s+|\s+$/g, '').slice(0, 20);
         // The picker lists people outside the household too (data.contacts), so names come from there.
         var person = function (mid) { return memberById(data.contacts, mid) || memberById(grpPeople(data.members), mid); };
@@ -568,7 +568,7 @@
             var quoted = m.replyTo ? findGroupMessage(list, m.replyTo) : null;
             if (quoted) {
                 var q = node('div', 'sms-quote');
-                q.appendChild(node('div', 'sms-quote-who', quoted.side === 'mine' ? 'You' : (quoted.name || grpName(data.meta, quoted.from))));
+                q.appendChild(node('div', 'sms-quote-who', quoted.side === 'mine' ? L('You') : (quoted.name || grpName(data.meta, quoted.from))));
                 q.appendChild(node('div', 'sms-quote-text', String(quoted.text || '').slice(0, 60)));
                 stack.appendChild(q);
             }
@@ -580,7 +580,7 @@
                 onTap(row, function (e) {
                     e.stopPropagation();
                     if (grpReply && grpReply.id === mm.id) grpReply = null;
-                    else grpReply = { id: mm.id, name: mm.side === 'mine' ? 'You' : (mm.name || grpName(data.meta, mm.from)), text: mm.text };
+                    else grpReply = { id: mm.id, name: mm.side === 'mine' ? L('You') : (mm.name || grpName(data.meta, mm.from)), text: mm.text };
                     grpSyncReplyBar();
                 });
             })(m);
@@ -619,7 +619,7 @@
             var field = box.parentNode;
             if (grpReply) compose.insertBefore(grpReplyBar(), field);
         }
-        if (box) box.setAttribute('placeholder', grpReply ? 'Reply' : 'Message');
+        if (box) box.setAttribute('placeholder', grpReply ? L('Reply') : L('Message'));
         var rows = document.getElementsByClassName('sms-grow');
         for (var i = 0; i < rows.length; i++) {
             if (grpReply && rows[i].getAttribute('data-id') === grpReply.id) rows[i].classList.add('picked');
@@ -641,12 +641,12 @@
         if (!data.meta) {
             wrap.appendChild(subHeader('group', 'Group'));
             var none = card();
-            none.appendChild(node('div', 'ph-empty', 'This group is gone.'));
+            none.appendChild(node('div', 'ph-empty', L('This group is gone.')));
             wrap.appendChild(none);
             return wrap;
         }
         var nav = node('div', 'sms-nav');
-        var back = node('div', 'ph-back', '< Back');
+        var back = node('div', 'ph-back', L('< Back'));
         onTap(back, function (e) { e.stopPropagation(); open('texts'); });
         nav.appendChild(back);
         // The avatar stack fights .sms-nav's centred peer block; the header carries the name
@@ -654,13 +654,13 @@
         var peer = node('div', 'sms-peer sms-peer-group');
         peer.appendChild(node('div', 'sms-peer-name', data.meta.name));
         var typing = data.status && data.status.typing ? grpName(data.meta, data.status.typing) : '';
-        var pres = node('div', 'sms-presence' + (typing ? '' : ' off'), typing ? typing + ' is typing\u2026' : (data.meta.members.length + ' people'));
+        var pres = node('div', 'sms-presence' + (typing ? '' : ' off'), typing ? L('{name} is typing…', { name: typing }) : L('{n} people', { n: data.meta.members.length }));
         pres.id = 'sms-presence';
         peer.appendChild(pres);
         nav.appendChild(peer);
         var more = node('button', 'sms-more');
         more.type = 'button';
-        more.setAttribute('title', 'Group settings');
+        more.setAttribute('title', L('Group settings'));
         // Plain text: the positioned divs measured correctly and still painted as one point, and
         // the svg never made it into the tree on this engine. Text is what everything else here is.
         more.appendChild(node('div', 'sms-more-glyph', '...'));
@@ -692,7 +692,7 @@
         }
         log.addEventListener('scroll', function () { grpJumpSync(log); });
         var list = data.messages || [];
-        if (!list.length) log.appendChild(node('div', 'sms-empty', 'No messages yet. Say something.'));
+        if (!list.length) log.appendChild(node('div', 'sms-empty', L('No messages yet. Say something.')));
         grpShown = grpFillLog(log, data, list, 0);
         wrap.appendChild(log);
 
@@ -702,13 +702,13 @@
         var field = node('div', 'sms-field');
         var at = node('button', 'sms-at-btn', '@');
         at.type = 'button';
-        at.setAttribute('title', 'Mention someone');
+        at.setAttribute('title', L('Mention someone'));
         onTap(at, function (e) { e.stopPropagation(); grpPickMention(data); }, { silent: true });
         var input = node('textarea', 'sms-input sms-ginput');
         input.id = 'sms-box';
         applyUiFont(input);
         input.setAttribute('maxlength', String(SMS_G_TEXT_MAX));
-        input.setAttribute('placeholder', grpReply ? 'Reply' : 'Message');
+        input.setAttribute('placeholder', grpReply ? L('Reply') : L('Message'));
         input.setAttribute('rows', '1');
         input.value = grpDraft;
         input.addEventListener('input', function () {
@@ -735,7 +735,7 @@
         var send = node('button', 'sms-send' + (String(grpDraft || '').replace(/\s/g, '') ? '' : ' off'));
         send.id = 'sms-send';
         send.type = 'button';
-        send.setAttribute('title', 'Send');
+        send.setAttribute('title', L('Send'));
         send.appendChild(sendGlyph());
         onTap(send, function (e) { e.stopPropagation(); sendGroup(); }, { silent: true });
         field.appendChild(at);
@@ -804,10 +804,10 @@
     function renameGroup(id, name) {
         if (grpNameBusy) return;
         var clean = String(name || '').replace(/^\s+|\s+$/g, '').slice(0, 20);
-        if (!clean) { setNote('The name cannot be empty.', true); return; }
+        if (!clean) { setNote(L('The name cannot be empty.'), true); return; }
         grpNameBusy = true;
         loadGroupMeta(id).then(function (meta) {
-            if (!meta) throw new Error('This group is gone.');
+            if (!meta) throw new Error(L('This group is gone.'));
             return saveGroupMeta(meta, { name: clean });
         }).then(function () {
             grpNameBusy = false;
@@ -845,7 +845,7 @@
         if (grpMembersBusy) return;
         grpMembersBusy = true;
         loadGroupMeta(id).then(function (meta) {
-            if (!meta) throw new Error('This group is gone.');
+            if (!meta) throw new Error(L('This group is gone.'));
             var rest = meta.members.filter(function (mid) { return String(mid) !== String(memberId); });
             var names = meta.memberNames || {};
             return saveGroupMeta(meta, { members: rest.map(function (mid) { return { id: mid, name: names[mid] || mid }; }) });
@@ -859,7 +859,7 @@
         if (grpMembersBusy) return;
         grpMembersBusy = true;
         loadGroupMeta(id).then(function (meta) {
-            if (!meta) throw new Error('This group is gone.');
+            if (!meta) throw new Error(L('This group is gone.'));
             if (meta.members.indexOf(String(memberId)) >= 0) return null;
             if (meta.members.length >= SMS_G_MAX) throw new Error('Up to ' + SMS_G_MAX + ' people.');
             var m = memberById(members || [], memberId);
@@ -887,7 +887,7 @@
         wrap.appendChild(subHeader('groupMembers', 'Members'));
         if (!data.meta) {
             var gone = card();
-            gone.appendChild(node('div', 'ph-empty', 'This group is gone.'));
+            gone.appendChild(node('div', 'ph-empty', L('This group is gone.')));
             wrap.appendChild(gone);
             return wrap;
         }
@@ -900,11 +900,11 @@
             else row.appendChild(node('div', 'ph-avatar sms-gface-blank'));
             var who = node('div', 'sms-pick-name', data.meta.memberNames[mid] || (m ? fullName(m) : String(mid)));
             row.appendChild(who);
-            if (String(mid) === String(data.meta.owner)) row.appendChild(node('div', 'sms-tag', data.meta.school ? '班长' : data.meta.company ? '群主' : 'Creator'));
+            if (String(mid) === String(data.meta.owner)) row.appendChild(node('div', 'sms-tag', data.meta.school ? L('班长') : data.meta.company ? L('群主') : L('Creator')));
             if (owner) {
                 var x = node('button', 'sms-pick-x', '\u00D7');
                 x.type = 'button';
-                x.setAttribute('title', 'Remove from group');
+                x.setAttribute('title', L('Remove from group'));
                 onTap(x, function (e) { e.stopPropagation(); removeMember(data.meta.id, mid); }, { silent: true });
                 row.appendChild(x);
             }
@@ -913,7 +913,7 @@
         wrap.appendChild(listCard);
 
         if (owner) {
-            var add = node('button', 'ph-btn sms-gcreate', grpAddOpen ? 'Done' : 'Add people');
+            var add = node('button', 'ph-btn sms-gcreate', grpAddOpen ? L('Done') : L('Add people'));
             add.type = 'button';
             onTap(add, function (e) { e.stopPropagation(); grpAddOpen = !grpAddOpen; refresh(); }, { silent: true });
             wrap.appendChild(add);
@@ -933,19 +933,19 @@
                     onTap(row, function (e) { e.stopPropagation(); addMember(data.meta.id, id, data.members); });
                     poolCard.appendChild(row);
                 });
-                if (!any) poolCard.appendChild(node('div', 'ph-empty', 'Everyone in the house is already in.'));
+                if (!any) poolCard.appendChild(node('div', 'ph-empty', L('Everyone in the house is already in.')));
                 wrap.appendChild(poolCard);
             }
         }
         if (data.meta.school) {
-            wrap.appendChild(node('div', 'ph-caption sms-company-note', '班级群：同班同学自动加入，群主是班长；在读期间不能退群，毕业后群会解散。'));
+            wrap.appendChild(node('div', 'ph-caption sms-company-note', L('班级群：同班同学自动加入，群主是班长；在读期间不能退群，毕业后群会解散。')));
             return wrap;
         }
         if (data.meta.company) {
-            wrap.appendChild(node('div', 'ph-caption sms-company-note', '公司工作群：入职自动加入，群主是公司职位最高的人；在职期间不能退群，离职后自动退出。'));
+            wrap.appendChild(node('div', 'ph-caption sms-company-note', L('公司工作群：入职自动加入，群主是公司职位最高的人；在职期间不能退群，离职后自动退出。')));
             return wrap;
         }
-        var leave = node('button', 'ph-btn sms-gleave', owner ? 'Disband group' : 'Leave group');
+        var leave = node('button', 'ph-btn sms-gleave', owner ? L('Disband group') : L('Leave group'));
         leave.type = 'button';
         onTap(leave, function (e) { e.stopPropagation(); leaveGroup(data.meta.id, data.meId); }, { silent: true });
         wrap.appendChild(leave);
@@ -963,7 +963,7 @@
         wrap.appendChild(subHeader('groupName', 'Group Name'));
         if (!data.meta) {
             var gone = card();
-            gone.appendChild(node('div', 'ph-empty', 'This group is gone.'));
+            gone.appendChild(node('div', 'ph-empty', L('This group is gone.')));
             wrap.appendChild(gone);
             return wrap;
         }
@@ -972,7 +972,7 @@
         // phone that reliably takes Latin letters and digits. An <input> here only ever got
         // text through the input method.
         var field = node('textarea', 'sms-gname');
-        field.setAttribute('placeholder', 'Group name');
+        field.setAttribute('placeholder', L('Group name'));
         field.setAttribute('maxlength', '20');
         field.setAttribute('rows', '1');
         field.value = grpNameDraft || data.meta.name;
@@ -980,7 +980,7 @@
         field.addEventListener('input', function () { grpNameDraft = field.value; });
         c.appendChild(field);
         wrap.appendChild(c);
-        var save = node('button', 'ph-btn sms-gcreate', 'Save');
+        var save = node('button', 'ph-btn sms-gcreate', L('Save'));
         save.type = 'button';
         onTap(save, function (e) {
             e.stopPropagation();
@@ -1016,7 +1016,7 @@
         sheet.id = 'sms-sheet';
         var owner = grpIsOwner(data.meta, data.meId);
         function item(label, danger, action) {
-            var row = node('div', 'sms-sheet-item' + (danger ? ' danger' : ''), label);
+            var row = node('div', 'sms-sheet-item' + (danger ? ' danger' : ''), L(label));
             onTap(row, function (e) {
                 e.stopPropagation();
                 grpHideMenuSheet();
@@ -1028,7 +1028,7 @@
         item('Members', false, function () { grpAddOpen = false; open('groupMembers'); });
         if (owner) item('Manage Members', false, function () { grpAddOpen = true; open('groupMembers'); });
         if (!data.meta.company) item(owner ? 'Disband Group' : 'Leave Group', true, function () { leaveGroup(data.meta.id, data.meId); });
-        var cancel = node('div', 'sms-sheet-cancel', 'Cancel');
+        var cancel = node('div', 'sms-sheet-cancel', L('Cancel'));
         onTap(cancel, function (e) { e.stopPropagation(); grpHideMenuSheet(); });
         sheet.appendChild(cancel);
         // In the corner, small: which build the phone is actually running.
@@ -1091,7 +1091,7 @@
         var b = node('button', 'sms-jump' + (grpStick ? '' : ' show'));
         b.id = 'sms-jump';
         b.type = 'button';
-        b.setAttribute('title', 'Latest');
+        b.setAttribute('title', L('Latest'));
         var svg = glyphSvg('0 0 24 24');
         svg.setAttribute('class', 'sms-jump-glyph');
         glyphPath(svg, 'M5.3 8.6a1.1 1.1 0 0 1 1.6 0L12 13.7l5.1-5.1a1.1 1.1 0 1 1 1.6 1.6l-5.9 5.9a1.1 1.1 0 0 1-1.6 0L5.3 10.2a1.1 1.1 0 0 1 0-1.6z', '#ffffff');
@@ -1178,7 +1178,7 @@
         var box = document.getElementById('sms-box');
         var body = String(box ? box.value : grpDraft || '').replace(/^\s+|\s+$/g, '');
         if (!body) return;
-        if (body.length > SMS_G_TEXT_MAX) { setNote('Keep it under ' + SMS_G_TEXT_MAX + ' characters.', true); return; }
+        if (body.length > SMS_G_TEXT_MAX) { setNote(L('Keep it under {n} characters.', { n: SMS_G_TEXT_MAX }), true); return; }
         var section = grpSection(grpId);
         var mention = grpMention;
         var reply = grpReply;

@@ -136,7 +136,7 @@
     ];
     // The installed apps in order, kept by the app registry (registerApp, appsRebuild).
     var APPS = [];
-    var TITLES = { family: 'Family', bonds: 'Bonds', oa: 'OA', time: 'Time', jobs: 'Jobs', freelance: 'Freelance', texts: 'Texts', messages: 'Messages', chat: 'Chat', persona: 'Persona', moments: 'Moments', ai: 'AI', settings: 'Settings', sounds: 'Sounds', wallpaper: 'Wallpaper', study: '雅思学习', scexam: '雅思考试', booklet: '成长册', bookread: '成长册' };
+    var TITLES = { family: 'My Home', bonds: 'Bonds', oa: 'OA', time: 'Time', jobs: 'Jobs', freelance: 'Freelance', texts: 'Texts', messages: 'Messages', chat: 'Chat', persona: 'Persona', moments: 'Moments', ai: 'AI', settings: 'Settings', sounds: 'Sounds', wallpaper: 'Wallpaper', study: '雅思学习', scexam: '雅思考试', booklet: '成长册', bookread: '成长册' };
     // Mailbox on disk, one folder per conversation:
     //   <mod>/ui/phone/sms/<playerId>-<contactId>/{outbox,inbox,seen,status}.cfg
     // The phone writes outbox (the person you are playing) and seen. The contact's replies go
@@ -441,10 +441,10 @@
 
     function greeting(env) {
         var h = env && typeof env.hour === 'number' ? env.hour : 12;
-        if (h >= 5 && h < 12) return 'Good morning';
-        if (h >= 12 && h < 18) return 'Good afternoon';
-        if (h >= 18 && h < 23) return 'Good evening';
-        return 'Good night';
+        if (h >= 5 && h < 12) return L('Good morning');
+        if (h >= 12 && h < 18) return L('Good afternoon');
+        if (h >= 18 && h < 23) return L('Good evening');
+        return L('Good night');
     }
 
     function inWindow(now, start, end) {

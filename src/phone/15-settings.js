@@ -14,6 +14,10 @@
             wf.content.scrollTop = at;
             return;
         }
+        if (current === 'language') {
+            show(renderLanguage({}));
+            return;
+        }
         if (current !== 'sounds') return;
         var top = wf.content.scrollTop;
         show(renderSounds({}));
@@ -24,7 +28,9 @@
         var tile = node('div', 'st-nav-icon st-ic-' + id);
         var svg = glyphSvg('0 0 24 24');
         svg.setAttribute('class', 'st-nav-glyph');
-        if (id === 'study') {
+        if (id === 'language') {
+            glyphPath(svg, 'M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zm6.8 7.7h-3.1a13 13 0 0 0-1.3-5.3 6.9 6.9 0 0 1 4.4 5.3zM12 5.1c.9 1.2 1.9 3.3 2.1 6.1H9.9c.2-2.8 1.2-4.9 2.1-6.1zM9.6 5.9a13 13 0 0 0-1.3 5.3H5.2a6.9 6.9 0 0 1 4.4-5.3zm-4.4 6.9h3.1a13 13 0 0 0 1.3 5.3 6.9 6.9 0 0 1-4.4-5.3zm6.8 6.1c-.9-1.2-1.9-3.3-2.1-6.1h4.2c-.2 2.8-1.2 4.9-2.1 6.1zm2.4-.8a13 13 0 0 0 1.3-5.3h3.1a6.9 6.9 0 0 1-4.4 5.3z', '#ffffff', 'evenodd');
+        } else if (id === 'study') {
             glyphPath(svg, 'M4 5.2C6.6 4.4 9.4 4.6 12 6c2.6-1.4 5.4-1.6 8-.8v13c-2.6-.8-5.4-.6-8 .8-2.6-1.4-5.4-1.6-8-.8v-13z', '#ffffff');
             glyphPath(svg, 'M11.3 6.8h1.4v11.4h-1.4z', '#FF9500');
         } else if (id === 'sounds') {
@@ -42,7 +48,7 @@
     function settingsNavRow(id, value, first) {
         var row = node('div', 'st-nav' + (first ? ' first' : ''));
         row.appendChild(settingsIcon(id));
-        row.appendChild(node('div', 'st-nav-label', TITLES[id]));
+        row.appendChild(node('div', 'st-nav-label', L(TITLES[id])));
         row.appendChild(node('div', 'st-nav-value', value));
         row.appendChild(node('div', 'st-nav-chev', '>'));
         onTap(row, function (e) {
@@ -58,9 +64,34 @@
         var list = card();
         list.className += ' st-nav-card';
         var s = soundSettings;
-        list.appendChild(settingsNavRow('sounds', s.enabled ? s.volume + '%' : 'Off', true));
+        list.appendChild(settingsNavRow('language', langOf(phoneLang).name, true));
+        list.appendChild(settingsNavRow('sounds', s.enabled ? s.volume + '%' : L('Off')));
         list.appendChild(settingsNavRow('wallpaper', wallActive().label));
-        list.appendChild(settingsNavRow('study', studySettings.enabled ? STUDY_LEVELS[studySettings.level - 1].short : '关'));
+        list.appendChild(settingsNavRow('study', studySettings.enabled ? STUDY_LEVELS[studySettings.level - 1].short : L('关')));
+        wrap.appendChild(list);
+        return wrap;
+    }
+
+    // Settings > Language: the phone's own words in Chinese or English (01-lang.js). Each
+    // language is named in itself, so it can be found whichever one the phone is in now.
+    function renderLanguage() {
+        var wrap = node('div');
+        wrap.appendChild(subHeader('language'));
+        var list = card();
+        LANGS.forEach(function (lang, i) {
+            var on = lang.id === phoneLang;
+            var row = node('div', 'st-row st-level' + (on ? ' on' : '') + (i ? '' : ' first'));
+            var who = row.appendChild(node('div', 'st-level-who'));
+            who.appendChild(node('div', 'st-label', lang.name));
+            who.appendChild(node('div', 'st-level-text', lang.note));
+            row.appendChild(node('div', 'st-level-tick', on ? '✓' : ''));
+            onTap(row, function (e) {
+                e.stopPropagation();
+                langSet(lang.id);
+            });
+            list.appendChild(row);
+        });
+        list.appendChild(node('div', 'ai-hint', L('The phone’s own words. What your family texts you stays in the language they write in.')));
         wrap.appendChild(list);
         return wrap;
     }

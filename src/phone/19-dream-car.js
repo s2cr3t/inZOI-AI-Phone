@@ -263,6 +263,104 @@
         txSplashReveal();
     }
 
+    // ---- Moments splash ----
+    // Moments opens on a veil of its own: the Texts one's frame (the phone's light or dark surface,
+    // Back, the home bar, a name and a line), but warm, with three photo cards that fan out and
+    // fold back like friends' pictures being flicked through, and it leaves by lifting and growing
+    // into the feed rather than only fading. The feed, its photos and portraits are read from the
+    // phone's files, so it is up between MM_SPLASH_MIN_MS and MM_SPLASH_MAX_MS.
+    var mmCurtain = null;
+    var MM_SPLASH_MIN_MS = 900;
+    var MM_SPLASH_MAX_MS = 2200;
+
+    function mmCurtainStop() {
+        var c = mmCurtain;
+        if (!c) return;
+        clearTimeout(c.timer);
+        clearTimeout(c.waitTimer);
+        if (c.veil.parentNode) c.veil.parentNode.removeChild(c.veil);
+        c.root.classList.remove('mm-covering');
+        mmCurtain = null;
+        if (c.phase !== 'revealing') traceNav('moments curtain dropped at ' + c.phase + ' for ' + c.screen);
+    }
+
+    function mmCurtainFade(target, ms, done) {
+        var c = mmCurtain;
+        if (!c) return;
+        fadeVeil(c.veil, target, ms, function () { return mmCurtain === c; }, done);
+    }
+
+    function mmCurtainOpen(screenId) {
+        mmCurtainStop();
+        ++openSeq;
+        awaitOpen(screenId);
+        var root = document.getElementById('app-root');
+        var veil = node('div', 'mm-cover');
+        veil.style.opacity = '0';
+        var back = veil.appendChild(node('button', 'tx-cover-back mm-cover-back', L('Back')));
+        var center = veil.appendChild(node('div', 'mm-cover-center'));
+        var stack = center.appendChild(node('div', 'mm-cover-stack'));
+        stack.appendChild(node('div', 'mm-cover-card c3'));
+        stack.appendChild(node('div', 'mm-cover-card c2'));
+        var front = stack.appendChild(node('div', 'mm-cover-card c1'));
+        front.appendChild(node('span', 'mm-cover-sun'));
+        front.appendChild(node('span', 'mm-cover-hill'));
+        center.appendChild(node('div', 'mm-cover-brand', 'MOMENTS'));
+        var label = center.appendChild(node('div', 'mm-cover-label', L('Catching up with friends')));
+        label.setAttribute('role', 'status');
+        veil.appendChild(node('div', 'tx-cover-home mm-cover-home'));
+        root.appendChild(veil);
+        root.classList.add('mm-covering');
+        var c = mmCurtain = { root: root, veil: veil, screen: screenId, phase: 'covering',
+            at: Date.now(), timer: 0, waitTimer: 0, pending: false };
+        onTap(back, function () { splashBack(mmCurtainStop, screenId); });
+        c.timer = setTimeout(function () {
+            if (mmCurtain !== c || c.phase === 'revealing') return;
+            mmSplashReveal();
+        }, MM_SPLASH_MAX_MS);
+        traceNav('moments cover ' + current + ' -> ' + screenId);
+        mmCurtainFade(1, 180, function () {
+            var k = mmCurtain;
+            if (!k || k !== c) return;
+            k.phase = 'loading';
+            openNow(screenId, null);
+            if (k.pending) mmSplashReveal();
+        });
+    }
+
+    function mmSplashReveal() {
+        var c = mmCurtain;
+        if (!c) return;
+        if (c.phase !== 'loading') { c.pending = true; return; }
+        var wait = MM_SPLASH_MIN_MS - (Date.now() - c.at);
+        if (wait > 0) {
+            if (!c.waitTimer) c.waitTimer = setTimeout(function () {
+                c.waitTimer = 0;
+                mmSplashReveal();
+            }, wait);
+            return;
+        }
+        c.phase = 'preparing';
+        nextFrame(function () { nextFrame(function () {
+            var k = mmCurtain;
+            if (!k || k !== c || k.phase !== 'preparing') return;
+            clearTimeout(k.timer);
+            k.phase = 'revealing';
+            k.veil.classList.add('mm-out');
+            traceNav('moments revealed +' + (Date.now() - k.at) + 'ms');
+            mmCurtainFade(0, 420, function () { mmCurtainStop(); });
+        }); });
+    }
+
+    function mmSplashCheck() {
+        var c = mmCurtain;
+        if (!c) return;
+        if (c.phase === 'covering') return;
+        if (c.screen !== current) { mmCurtainStop(); return; }
+        if (c.phase !== 'loading') return;
+        mmSplashReveal();
+    }
+
     // ---- Freelance splash ----
     // The board and the played character's career record come from two different places: the
     // service's board file and the game's own component. Opening Freelance therefore gets a real
@@ -448,7 +546,7 @@
         var root = document.getElementById('app-root');
         var veil = node('div', 'nw-cover');
         veil.style.opacity = '0';
-        var back = veil.appendChild(node('button', 'nw-cover-back', '< Back'));
+        var back = veil.appendChild(node('button', 'nw-cover-back', L('< Back')));
         veil.appendChild(node('div', 'nw-cover-disc outer'));
         veil.appendChild(node('div', 'nw-cover-disc'));
         var center = veil.appendChild(node('div', 'nw-cover-center'));
@@ -593,7 +691,7 @@
         var root = document.getElementById('app-root');
         var veil = node('div', 'oa-cover');
         veil.style.opacity = '0';
-        var back = veil.appendChild(node('button', 'oa-cover-back', '< Back'));
+        var back = veil.appendChild(node('button', 'oa-cover-back', L('< Back')));
         veil.appendChild(node('div', 'oa-cover-band'));
         var center = veil.appendChild(node('div', 'oa-cover-center'));
         var head = center.appendChild(node('div', 'oa-cover-head'));

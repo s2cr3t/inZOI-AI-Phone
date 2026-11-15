@@ -1,0 +1,207 @@
+'use strict';
+// The company the player runs once they hold its top rank (lib/company.js): the appointment,
+// a game day's figures and staff requests, and the manager's decisions from the phone.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { Company, isManager } = require('../lib/company');
+
+function desk(over) {
+    return Object.assign({
+        companyId: '900', companyName: '星河科技', rank: 5, maxRank: 5, hasNext: false, bossId: '',
+        salaries: { 1: 100, 2: 150, 3: 200, 4: 260, 5: 340 },
+        staff: [{ id: '11', rank: 2, evaluation: 80 }, { id: '12', rank: 1, evaluation: 50 }],
+        roster: [{ id: '11', rank: 2 }, { id: '12', rank: 1 }, { id: '1', rank: 5 }]
+    }, over);
+}
+
+function setup() {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'company-'));
+    const calls = [];
+    let roster = desk().roster;
+    const daemon = {
+        log: { info() {}, warn() {}, error() {} },
+        game: { soft: async (n, a) => { calls.push(n); return null; }, call: async (n, a) => { calls.push(n + ':' + a.entity_id); roster = roster.map((p) => p.id === a.entity_id ? { id: p.id, rank: p.rank + 1 } : p); } },
+        career: { fresh: async () => ({ roster }), request: (actor, op, arg, done) => { roster = roster.filter((p) => p.id !== actor); done({ ok: true, detail: 'ok' }); } },
+        world: { characterInfo: async (id) => ({ last_name: '李', first_name: 'n' + id }) }
+    };
+    const c = new Company(daemon);
+    c.configure(path.join(root, 'data'), path.join(root, 'phone'));
+    return { root, c, calls };
+}
+
+const view = (root) => JSON.parse(fs.readFileSync(path.join(root, 'phone', 'oa', 'company.cfg'), 'utf8')).byManager['1'];
+const decide = (root, byId) => {
+    fs.mkdirSync(path.join(root, 'phone', 'saved'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'phone', 'saved', 'oa-mgmt.cfg'), JSON.stringify({ v: 1, byId }));
+};
+
+test('only the top rank with nobody above runs the company', () => {
+    assert.ok(isManager(desk()));
+    assert.ok(!isManager(desk({ hasNext: true, rank: 4 })));
+    assert.ok(!isManager(desk({ bossId: '7' })), 'a colleague of the same top rank is above');
+    assert.ok(!isManager(null));
+});
+
+test('a manager gets figures and requests each day, and decides them', async () => {
+    const { root, c, calls } = setup();
+    c.rand = () => 0;
+    await c.tick('1', desk(), { day: 10 });
+    assert.ok(calls.includes('toast_show'), 'the appointment is announced');
+    let v = view(root);
+    assert.equal(v.company, '星河科技');
+    assert.equal(v.cash, (150 + 100) * 30);
+    await c.tick('1', desk(), { day: 11 });
+    v = view(root);
+    assert.equal(v.history.length, 1);
+    assert.ok(v.week.revenue > 0 && v.week.payroll === 250);
+    assert.equal(v.requests.length, 1);
+    const r = v.requests[0];
+    assert.equal(r.status, 'pending');
+
+    decide(root, { [r.id]: { decision: 'approved', at: 1 } });
+    c.poll();
+    await new Promise((res) => setTimeout(res, 50));
+    v = view(root);
+    assert.equal(v.requests[0].status, 'approved');
+    assert.ok(v.requests[0].effect.text);
+    // A request nobody answers lapses.
+    c.rand = () => 0;
+    await c.tick('1', desk(), { day: 12 });
+    await c.tick('1', desk(), { day: 15 });
+    v = view(root);
+    assert.ok(v.requests.some((x) => x.status === 'lapsed'));
+    // Losing the top seat closes the 管理台.
+    await c.tick('1', null, { day: 16 });
+    assert.equal(view(root), undefined);
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('a team project is followed, and paid when it is done', async () => {
+    const { root, c, calls } = setup();
+    const teamproject = require('../lib/teamproject');
+    const at = (day, h) => (day * 1440 + h * 60) * teamproject.TICKS_PER_MIN;
+    const company = (current, active) => ({ activeTeamProject: { projectId: 'X_Song', currentPoint: current, totalPoint: 300,
+        startTicks: at(10, 9), deadlineTicks: at(11, 17), bIsActive: active, memberContributions: { '(Value=11)': current - 10, '(Value=12)': 10 } },
+        lastOperatingStartTicks: at(10, 9), todayOperatingEndTicks: at(10, 17) });
+    const p = teamproject.current(company(100, true));
+    assert.equal(p.contributions['11'], 90);
+    // A day and a half of two office days gone, a third of the points: behind.
+    assert.equal(teamproject.standing(p, 11 * 1440 + 13 * 60).pace, 'behind');
+    await c.tick('1', desk({ project: p }), { day: 10, hour: 12, minute: 0 });
+    // Done: the game ends it at its points.
+    await c.tick('1', desk({ project: teamproject.current(company(300, false)) }), { day: 11, hour: 12, minute: 0 });
+    const v = view(root);
+    assert.equal(v.projectLog.length, 1);
+    assert.ok(v.projectLog[0].done);
+    assert.equal(v.projectLog[0].income, 0, 'no reward known without the catalogue');
+    assert.ok(calls.includes('toast_show'));
+    // Not settled twice.
+    await c.tick('1', desk({ project: teamproject.current(company(300, false)) }), { day: 11, hour: 13, minute: 0 });
+    assert.equal(view(root).projectLog.length, 1);
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('pay set by the manager starts the next day, is paid from the cash, and is answered', async () => {
+    const { root, c } = setup();
+    c.rand = () => 0.99;
+    const asked = [];
+    c.d.staffText = async (manager, id, reason) => { asked.push({ id, reason }); return 'text'; };
+    await c.tick('1', desk(), { day: 10 });
+    await c.tick('1', desk(), { day: 11 });
+    const before = view(root);
+    decide(root, {});
+    fs.writeFileSync(path.join(root, 'phone', 'saved', 'oa-mgmt.cfg'), JSON.stringify({ v: 1, byId: {}, pay: { 11: { to: 1.3, at: 5 }, 12: { to: 0.8, at: 5 } } }));
+    c.poll();
+    let v = view(root);
+    assert.equal(v.staff['11'].pay, 1, 'not before the next day');
+    assert.equal(v.staff['11'].planned, 1.3);
+    await c.tick('1', desk(), { day: 12 });
+    await new Promise((res) => setTimeout(res, 20));
+    v = view(root);
+    assert.equal(v.staff['11'].pay, 1.3);
+    assert.equal(v.staff['12'].pay, 0.8);
+    assert.ok(v.staff['11'].morale > before.staff['11'].morale, 'a rise lifts morale');
+    assert.ok(v.staff['12'].morale < before.staff['12'].morale, 'a cut lowers it');
+    // The day's wages are the new ones: 150 * 1.3 + 100 * 0.8.
+    assert.equal(v.history[v.history.length - 1].payroll, 195 + 80);
+    assert.equal(v.payLog[0].wageTo, 195);
+    assert.ok(asked.length >= 1 && /涨了工资/.test(asked[0].reason));
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('someone the game seats waits for the manager: kept, or let go; auto-fill off lets them go', async () => {
+    const { root, c } = setup();
+    c.rand = () => 0.99;
+    await c.tick('1', desk(), { day: 10 });
+    const staff = (more) => desk({ staff: desk().staff.concat(more), roster: desk().roster.concat(more.map((p) => ({ id: p.id, rank: p.rank }))) });
+    await c.tick('1', staff([{ id: '13', rank: 1, evaluation: 50, joinedDay: 10 }]), { day: 10 });
+    let v = view(root);
+    const hire = v.requests.find((r) => r.kind === 'hire');
+    assert.equal(hire.from, '13');
+    assert.ok(v.staff['13'].probation);
+    decide(root, { [hire.id]: { decision: 'approved', at: 1 } });
+    c.poll();
+    await new Promise((res) => setTimeout(res, 20));
+    v = view(root);
+    assert.equal(v.staff['13'].probation, false);
+    // Auto-fill off: the next one is let go at once (the game is asked to take them out).
+    fs.writeFileSync(path.join(root, 'phone', 'saved', 'oa-mgmt.cfg'), JSON.stringify({ v: 1, byId: {}, hiring: { auto: false, at: 2 } }));
+    c.poll();
+    await c.tick('1', staff([{ id: '13', rank: 1, evaluation: 50 }, { id: '14', rank: 1, evaluation: 40 }]), { day: 10 });
+    await new Promise((res) => setTimeout(res, 20));
+    v = view(root);
+    const second = v.requests.find((r) => r.kind === 'hire' && r.from === '14');
+    assert.equal(second.status, 'rejected');
+    assert.equal(v.autoHire, false);
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('someone gone without the manager is told and waits for them; someone let go is not', async () => {
+    const { root, c } = setup();
+    c.rand = () => 0.99;
+    await c.tick('1', desk(), { day: 10 });
+    const only11 = desk({ staff: [{ id: '11', rank: 2, evaluation: 80 }], roster: [{ id: '11', rank: 2 }, { id: '1', rank: 5 }] });
+    await c.tick('1', only11, { day: 10 });
+    assert.ok(!view(root).requests.some((r) => r.kind === 'gone'), 'missing once is not yet gone');
+    await c.tick('1', only11, { day: 10 });
+    const gone = view(root).requests.find((r) => r.kind === 'gone');
+    assert.equal(gone.from, '12');
+    assert.equal(gone.status, 'pending');
+    decide(root, { [gone.id]: { decision: 'rejected', at: 1 } });
+    c.poll();
+    await new Promise((res) => setTimeout(res, 20));
+    assert.equal(view(root).requests.find((r) => r.kind === 'gone').status, 'rejected');
+    // Let go by the manager: expected, no record.
+    c.data.byCompany['900'].expectLeave = { 11: Date.now() };
+    await c.tick('1', desk({ staff: [], roster: [{ id: '1', rank: 5 }] }), { day: 10 });
+    assert.equal(view(root).requests.filter((r) => r.kind === 'gone').length, 1);
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('an early project shutdown below its target fails, and an old false success is corrected once', async () => {
+    const { root, c } = setup();
+    await c.tick('1', desk({ project: { id: 'X', current: 80, total: 100, active: true, reward: 400, contributions: {} } }), { day: 10 });
+    await c.tick('1', desk({ project: { id: 'X', current: 80, total: 100, active: false, reward: 400, contributions: {} } }), { day: 11 });
+    let v = view(root);
+    assert.equal(v.projectLog[0].done, false);
+    assert.equal(v.projectLog[0].income, 0);
+
+    fs.rmSync(root, { recursive: true, force: true });
+    const oldRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'company-old-'));
+    fs.mkdirSync(path.join(oldRoot, 'data'), { recursive: true });
+    fs.writeFileSync(path.join(oldRoot, 'data', 'company.json'), JSON.stringify({ v: 1, byCompany: {
+        '900': { manager: '1', name: '星河科技', cash: 15000, staff: {}, requests: [], history: [],
+            projectLog: [{ id: 'X', current: 80, total: 100, done: true, income: 800 }] }
+    } }));
+    const d = setup().c.d;
+    const fixed = new Company(d);
+    fixed.configure(path.join(oldRoot, 'data'), path.join(oldRoot, 'phone'));
+    assert.equal(fixed.data.byCompany['900'].cash, 14200);
+    assert.equal(fixed.data.byCompany['900'].projectLog[0].done, false);
+    fixed.configure(path.join(oldRoot, 'data'), path.join(oldRoot, 'phone'));
+    assert.equal(fixed.data.byCompany['900'].cash, 14200);
+    fs.rmSync(oldRoot, { recursive: true, force: true });
+});

@@ -437,7 +437,8 @@
     wallInit();
     appsLoad();
     loadOutside();
-    open('home');
+    // The first screen is drawn in the saved language (01-lang.js).
+    langLoad().then(function () { open('home'); });
     setInterval(watchPlayed, POSSESS_POLL_MS);
     setInterval(watchBanner, BANNER_POLL_MS);
     setInterval(watchGmBanner, GM_BANNER_POLL_MS);

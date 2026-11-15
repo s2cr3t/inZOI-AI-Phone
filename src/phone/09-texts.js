@@ -18,7 +18,10 @@
     function smsVoiceClean(raw) {
         if (!raw || typeof raw.id !== 'string' || !/^[a-f0-9]{16}$/.test(raw.id)) return null;
         var seconds = Number(raw.seconds);
-        return isFinite(seconds) && seconds > 0 && seconds < 600 ? { id: raw.id, seconds: seconds } : null;
+        if (!(isFinite(seconds) && seconds > 0 && seconds < 600)) return null;
+        // of: the text this voice reads out (lib/voicenotes.js); it is drawn inside that bubble.
+        var of = typeof raw.of === 'string' && /^h-\d+-\d+$/.test(raw.of) ? raw.of : '';
+        return of ? { id: raw.id, seconds: seconds, of: of } : { id: raw.id, seconds: seconds };
     }
 
     function cleanList(raw) {
@@ -100,7 +103,7 @@
         if (Date.now() - smsClearingAt > 120000) {
             smsClearingAt = 0;
             smsClearAsk = false;
-            setNote('Could not clear texts. Is the reply service running?', true);
+            setNote(L('Could not clear texts. Is the reply service running?'), true);
             return Promise.resolve();
         }
         return cfgValue(SMS_SECTION, 'cleared').then(function (v) {
@@ -112,7 +115,7 @@
                 smsPhotos = {};
                 smsPhotoPending = null;
                 syncSmsPhotoComposer();
-                setNote('Texts cleared.', false);
+                setNote(L('Texts cleared.'), false);
                 bannerAt = {};
                 bannerReady = {};
                 clearBannerQueue();
@@ -125,7 +128,7 @@
         smsClearAsk = false;
         smsClearingAt = Date.now();
         smsRenderedKey = '';
-        setNote('Clearing...', false);
+        setNote(L('Clearing...'), false);
         saveJson('clear', { at: smsClearingAt }, SMS_SECTION).then(function () {
             refresh();
         }, function (err) {
@@ -138,18 +141,18 @@
     function clearTools() {
         var row = node('div', 'sms-tools');
         if (smsClearingAt) {
-            row.appendChild(node('div', 'sms-tool-note', 'Clearing all texts...'));
+            row.appendChild(node('div', 'sms-tool-note', L('Clearing all texts...')));
             return row;
         }
         if (smsClearAsk) {
-            row.appendChild(node('div', 'sms-tool-note', 'Clear all texts and group chats?'));
-            var yes = node('button', 'sms-tool warn', 'Clear');
+            row.appendChild(node('div', 'sms-tool-note', L('Clear all texts and group chats?')));
+            var yes = node('button', 'sms-tool warn', L('Clear'));
             yes.type = 'button';
             onTap(yes, function (e) {
                 e.stopPropagation();
                 requestClear();
             });
-            var no = node('button', 'sms-tool', 'Cancel');
+            var no = node('button', 'sms-tool', L('Cancel'));
             no.type = 'button';
             onTap(no, function (e) {
                 e.stopPropagation();
@@ -161,7 +164,7 @@
             row.appendChild(no);
             return row;
         }
-        var btn = node('button', 'sms-tool', 'Clear');
+        var btn = node('button', 'sms-tool', L('Clear'));
         btn.type = 'button';
         onTap(btn, function (e) {
             e.stopPropagation();
@@ -402,7 +405,7 @@
         if (txFoldersRead[key]) return write();
         return readTxFolders(key).then(function (v) {
             if (!v) {
-                setNote('分组暂时存不进去，稍后再改一次。', true);
+                setNote(L('分组暂时存不进去，稍后再改一次。'), true);
                 return;
             }
             txFoldersRead[key] = true;
@@ -470,10 +473,10 @@
             });
             row.appendChild(c);
         };
-        chip(TX_ALL, '全部');
+        chip(TX_ALL, L('全部'));
         f.folders.forEach(function (x) { chip(x.id, x.name); });
-        if (f.folders.length && chats.some(function (c) { return !txFolderOfKey(f, c.key); })) chip(TX_NONE, '未分组');
-        var edit = node('div', 'tx-chip tx-chip-edit', f.folders.length ? '管理' : '+ 分组');
+        if (f.folders.length && chats.some(function (c) { return !txFolderOfKey(f, c.key); })) chip(TX_NONE, L('未分组'));
+        var edit = node('div', 'tx-chip tx-chip-edit', f.folders.length ? L('管理') : L('+ 分组'));
         onTap(edit, function (e) {
             e.stopPropagation();
             // The Manage page reads what the list reads: it opens on the list's data at once, and
@@ -540,13 +543,13 @@
         wrap.appendChild(subHeader('textsFolders', '聊天分组'));
         var f = txFoldersOf(data.meId);
         var fc = card('分组');
-        if (!f.folders.length) fc.appendChild(node('div', 'ph-caption', '还没有分组。可以自己建，也可以一键按家人、同学、工作、朋友分好。'));
+        if (!f.folders.length) fc.appendChild(node('div', 'ph-caption', L('还没有分组。可以自己建，也可以一键按家人、同学、工作、朋友分好。')));
         f.folders.forEach(function (x) {
             var r = node('div', 'tx-frow');
             var name = txNameField(x.name, '', function (v) { v = txCleanName(v); if (v) x.name = v; });
             name.addEventListener('blur', function () { saveTxFolders(data.meId); });
             r.appendChild(name);
-            var del = node('div', 'tx-fbtn warn', '删除');
+            var del = node('div', 'tx-fbtn warn', L('删除'));
             onTap(del, function (e) {
                 e.stopPropagation();
                 f.folders = f.folders.filter(function (y) { return y.id !== x.id; });
@@ -561,12 +564,12 @@
         if (f.folders.length < TX_FOLDERS_MAX) {
             var addRow = node('div', 'tx-frow');
             addRow.appendChild(txNameField(txNewName, '新分组名称', function (v) { txNewName = v; }));
-            var add = node('div', 'tx-fbtn on', '添加');
+            var add = node('div', 'tx-fbtn on', L('添加'));
             onTap(add, function (e) {
                 e.stopPropagation();
                 var v = txCleanName(txNewName);
-                if (!v) { setNote('先写分组名称。', true); return; }
-                if (f.folders.some(function (y) { return y.name === v; })) { setNote('已经有叫「' + v + '」的分组了。', true); return; }
+                if (!v) { setNote(L('先写分组名称。'), true); return; }
+                if (f.folders.some(function (y) { return y.name === v; })) { setNote(L('已经有叫「{name}」的分组了。', { name: v }), true); return; }
                 f.folders.push({ id: 'f' + Date.now().toString(36), name: v });
                 txNewName = '';
                 setNote('', false);
@@ -597,7 +600,7 @@
             var m = row.member;
             rows.push({ key: 'c:' + m.entity_id, name: fullName(m), face: function () { var p = node('div', 'sms-pic'); p.appendChild(faceAvatar(m)); return p; } });
         });
-        if (!rows.length) ac.appendChild(node('div', 'ph-empty', '还没有聊天。'));
+        if (!rows.length) ac.appendChild(node('div', 'ph-empty', L('还没有聊天。')));
         rows.forEach(function (item) {
             var r = node('div', 'tx-arow');
             var top = node('div', 'ph-row');
@@ -642,7 +645,7 @@
         line.appendChild(pic);
         var who = node('div', 'ph-who');
         who.appendChild(node('div', 'ph-name', fullName(rec.contact)));
-        who.appendChild(node('div', 'ph-sub', '想加你为好友'));
+        who.appendChild(node('div', 'ph-sub', L('想加你为好友')));
         line.appendChild(who);
         c.appendChild(line);
         if (rec.note) c.appendChild(node('div', 'sms-suitor-note', '“' + rec.note + '”'));
@@ -711,6 +714,7 @@
         }).then(function (v) {
             if (!v || v.v !== 1 || String(v.player) !== String(meId) || typeof v.at !== 'number') return null;
             if (Math.abs(Date.now() - v.at) > SMS_INDEX_FRESH_MS) return null;
+            smsServiceSeen(v.at);
             if (!v.threads || typeof v.threads !== 'object' || !v.groups || typeof v.groups !== 'object') return null;
             return v;
         }, function () { return null; });
@@ -765,18 +769,31 @@
     }
 
     // Presence of the reply service, from status.cfg and its heartbeat age.
+    // When the reply service was last seen running (the Texts index it writes every few seconds,
+    // its daemon.cfg heartbeat). A contact never texted has no status file of its own, and after
+    // a move to another city the game gives the whole family new ids, so nobody has one: they
+    // are online while the service runs, not "Offline".
+    var smsServiceSeenAt = 0;
+
+    function smsServiceSeen(at) {
+        if (typeof at === 'number' && at > smsServiceSeenAt && at <= Date.now() + 5000) smsServiceSeenAt = at;
+    }
+
     function presence(status) {
+        if (!status && Date.now() - smsServiceSeenAt <= BRIDGE_STALE_MS) {
+            return { cls: 'on', text: L('Online'), fresh: false, typing: false };
+        }
         if (!status || typeof status.heartbeat !== 'number' || Date.now() - status.heartbeat > BRIDGE_STALE_MS) {
-            return { cls: 'off', text: 'Offline', fresh: false, typing: false };
+            return { cls: 'off', text: L('Offline'), fresh: false, typing: false };
         }
         var s = status.state;
-        if (s === 'typing') return { cls: 'typing', text: 'Typing...', fresh: true, typing: true };
-        if (s === 'reading') return { cls: 'on', text: 'Reading...', fresh: true, typing: false };
-        if (s === 'waiting') return { cls: 'off', text: 'Connecting...', fresh: true, typing: false };
-        if (s === 'paused') return { cls: 'off', text: 'Auto replies off', fresh: true, typing: false };
-        if (s === 'offline') return { cls: 'off', text: 'Offline', fresh: false, typing: false };
-        if (s === 'error') return { cls: 'err', text: status.error || 'Reply service error', fresh: true, typing: false };
-        return { cls: 'on', text: 'Online', fresh: true, typing: false };
+        if (s === 'typing') return { cls: 'typing', text: L('Typing...'), fresh: true, typing: true };
+        if (s === 'reading') return { cls: 'on', text: L('Reading...'), fresh: true, typing: false };
+        if (s === 'waiting') return { cls: 'off', text: L('Connecting...'), fresh: true, typing: false };
+        if (s === 'paused') return { cls: 'off', text: L('Auto replies off'), fresh: true, typing: false };
+        if (s === 'offline') return { cls: 'off', text: L('Offline'), fresh: false, typing: false };
+        if (s === 'error') return { cls: 'err', text: status.error || L('Reply service error'), fresh: true, typing: false };
+        return { cls: 'on', text: L('Online'), fresh: true, typing: false };
     }
 
     function receiptText(data) {
@@ -786,8 +803,8 @@
         if (last.side !== 'mine') return '';
         var st = data.status;
         var p = presence(st);
-        if (st && typeof st.readAt === 'number' && st.readAt >= last.at && p.fresh) return 'Read';
-        return p.fresh ? 'Delivered' : 'Sent';
+        if (st && typeof st.readAt === 'number' && st.readAt >= last.at && p.fresh) return L('Read');
+        return p.fresh ? L('Delivered') : L('Sent');
     }
 
     // hold: a full redraw follows and will glide the log itself, so the typing row only
@@ -948,7 +965,7 @@
     function smsNotice(text, arriving, delay) {
         var line = node('div', 'sms-notice' + (arriving ? ' sms-in' : ''));
         line.appendChild(node('span', 'sms-notice-text', text));
-        line.appendChild(node('span', 'sms-notice-go', '查看 \u203A'));
+        line.appendChild(node('span', 'sms-notice-go', L('查看 \u203A')));
         if (arriving) setSmsDelay(line, delay);
         onTap(line, function (e) {
             e.stopPropagation();
@@ -987,7 +1004,7 @@
     function heartText(status) {
         var h = status && status.heart;
         if (!h || typeof h !== 'object' || !(h.clues > 0)) return '';
-        return h.soon ? '好像有心事 · 这两天就有结果' : '好像有心事';
+        return h.soon ? L('好像有心事 · 这两天就有结果') : L('好像有心事');
     }
 
     // A photo keeps its aspect ratio and shares the bubble with an optional caption. The
@@ -1013,7 +1030,7 @@
         });
         img.addEventListener('error', function () {
             img.style.display = 'none';
-            frame.appendChild(node('span', 'sms-photo-missing', 'Photo unavailable'));
+            frame.appendChild(node('span', 'sms-photo-missing', L('Photo unavailable')));
         });
         frame.appendChild(img);
         bubble.appendChild(frame);
@@ -1041,28 +1058,80 @@
         bubble.appendChild(wave);
         bubble.appendChild(node('span', 'sms-voice-len', secs + '″'));
         bubble.addEventListener('click', function () { smsVoicePlay(voice); });
-        smsVoiceLoad(voice);
         return bubble;
+    }
+
+    // A voice that reads out a text it follows: a small play chip at the end of that text's
+    // bubble instead of a bubble of its own, so a reply reads once and can be heard from where
+    // it is written. Same play, stop and playing marks as a voice bubble (class sms-voice).
+    function smsVoiceChip(voice, arriving) {
+        var secs = Math.max(1, Math.round(voice.seconds));
+        var chip = node('span', 'sms-voice sms-voice-chip' + (arriving ? ' sms-chip-in' : '') + (smsVoiceNow && smsVoiceNow.id === voice.id ? ' playing' : ''));
+        chip._voiceId = voice.id;
+        var wave = node('span', 'sms-voice-wave');
+        for (var i = 1; i <= 3; i++) wave.appendChild(node('span', 'sms-voice-bar b' + i));
+        chip.appendChild(wave);
+        chip.appendChild(node('span', 'sms-voice-len', secs + '″'));
+        chip.addEventListener('click', function (e) {
+            e.stopPropagation();
+            smsVoicePlay(voice);
+        });
+        return chip;
+    }
+
+    // The voices in a thread that read out one of its texts: { text id: { voice, arriving } }.
+    // Ids in a thread can carry a prefix; the voice names the bare id.
+    function smsVoicesOf(list, known) {
+        var byId = {};
+        var out = {};
+        var i;
+        for (i = 0; i < list.length; i++) {
+            if (!list[i].voice && list[i].side === 'theirs') byId[smsBareId(list[i].id)] = list[i].id;
+        }
+        for (i = 0; i < list.length; i++) {
+            var v = list[i].voice;
+            var target = v && v.of ? byId[v.of] : null;
+            if (target && !out[target]) out[target] = { voice: v, msgId: list[i].id, arriving: !!(known && !known[list[i].id]) };
+        }
+        return out;
+    }
+
+    function smsBareId(id) {
+        var at = String(id).indexOf('h-');
+        return at > 0 ? String(id).slice(at) : String(id);
     }
 
     function smsVoiceMark(id, on) {
         var list = document.getElementsByClassName('sms-voice');
         for (var i = 0; i < list.length; i++) {
             if (list[i]._voiceId !== id) continue;
-            list[i].className = 'sms-bubble sms-voice' + (on ? ' playing' : '');
+            var cls = list[i].className.replace(/\s*\bplaying\b/g, '');
+            list[i].className = on ? cls + ' playing' : cls;
         }
     }
 
     // Like the phone's sounds, a clip is made and left loading in the island before it is wanted
-    // (when its bubble is drawn) and is rewound and played on a tap: a <video> made on the tap
-    // reports playing but stays silent. The newest few are kept.
-    var SMS_VOICE_KEEP = 6;
+    // and is rewound and played on a tap: a <video> made and played on the tap reports playing
+    // but stays silent. Which clips are loaded follows the open thread, not the drawing: the
+    // newest SMS_VOICE_KEEP voices are, and that set changes only when a voice arrives. (Loading
+    // whatever was drawn, with a few kept, made and dropped players on every redraw once a thread
+    // had more voices than that, now and then dropping the one playing; the game's sound as a
+    // whole went silent after a while of it.) An older voice tapped is loaded then, played once
+    // it can be, and kept among at most SMS_VOICE_MAX; the one playing is never dropped.
+    var SMS_VOICE_KEEP = 4;
+    var SMS_VOICE_MAX = 8;
     var smsVoiceMedia = [];
 
-    function smsVoiceLoad(voice) {
+    function smsVoiceFind(id) {
         for (var i = 0; i < smsVoiceMedia.length; i++) {
-            if (smsVoiceMedia[i].id === voice.id) return smsVoiceMedia[i].media;
+            if (smsVoiceMedia[i].id === id) return smsVoiceMedia[i].media;
         }
+        return null;
+    }
+
+    function smsVoiceLoad(voice, keep) {
+        var have = smsVoiceFind(voice.id);
+        if (have) return have;
         var m = document.createElement('video');
         m.setAttribute('preload', 'auto');
         m.setAttribute('width', '16');
@@ -1076,12 +1145,31 @@
         });
         soundHostEl().appendChild(m);
         smsVoiceMedia.push({ id: voice.id, media: m });
-        while (smsVoiceMedia.length > SMS_VOICE_KEEP) {
-            var old = smsVoiceMedia.shift();
-            if (smsVoiceNow && smsVoiceNow.id === old.id) smsVoiceStop();
-            soundDrop(old.media);
-        }
+        smsVoiceTrim(keep || {});
         return m;
+    }
+
+    // Past SMS_VOICE_MAX, the oldest loaded go that are neither wanted nor playing.
+    function smsVoiceTrim(keep) {
+        for (var i = 0; i < smsVoiceMedia.length && smsVoiceMedia.length > SMS_VOICE_MAX;) {
+            var it = smsVoiceMedia[i];
+            if (keep[it.id] || (smsVoiceNow && smsVoiceNow.id === it.id)) {
+                i++;
+                continue;
+            }
+            smsVoiceMedia.splice(i, 1);
+            soundDrop(it.media);
+        }
+    }
+
+    // The open thread's newest voices, loaded ahead of a tap.
+    function smsVoicePreload(list) {
+        var voices = [];
+        for (var i = 0; i < list.length; i++) if (list[i].voice) voices.push(list[i].voice);
+        voices = voices.slice(-SMS_VOICE_KEEP);
+        var keep = {};
+        for (var j = 0; j < voices.length; j++) keep[voices[j].id] = true;
+        for (var k = 0; k < voices.length; k++) smsVoiceLoad(voices[k], keep);
     }
 
     function smsVoiceStop() {
@@ -1098,20 +1186,31 @@
         smsVoiceStop();
         if (again) return;
         var m = smsVoiceLoad(voice);
-        try {
-            m.volume = Math.max(0, Math.min(1, soundSettings.volume / 100 * soundGame));
-            m.currentTime = 0;
-        } catch (e) {}
         var cur = { id: voice.id, media: m, timer: 0 };
         smsVoiceNow = cur;
         smsVoiceMark(voice.id, true);
-        traceLoad('voice ' + voice.id + ' tap, ready ' + m.readyState + ' volume ' + m.volume + ' (sound ' + soundState + ')');
-        // The engine may play without ever firing ended, so the clip's length stops it too.
-        cur.timer = setTimeout(function () { if (smsVoiceNow === cur) smsVoiceStop(); }, (voice.seconds + 1.5) * 1000);
-        soundStart(m);
-        setTimeout(function () {
-            traceLoad('voice ' + voice.id + ' +1000ms ready ' + m.readyState + ' at ' + (m.currentTime || 0) + ' paused ' + m.paused);
-        }, 1000);
+        traceLoad('voice ' + voice.id + ' tap, ready ' + m.readyState + ' (sound ' + soundState + ')');
+        var started = false;
+        function go() {
+            if (started || smsVoiceNow !== cur) return;
+            started = true;
+            try {
+                m.volume = Math.max(0, Math.min(1, soundSettings.volume / 100 * soundGame));
+                m.currentTime = 0;
+            } catch (e) {}
+            // The engine may play without ever firing ended, so the clip's length stops it too.
+            cur.timer = setTimeout(function () { if (smsVoiceNow === cur) smsVoiceStop(); }, (voice.seconds + 1.5) * 1000);
+            soundStart(m);
+            setTimeout(function () {
+                traceLoad('voice ' + voice.id + ' +1000ms ready ' + m.readyState + ' at ' + (m.currentTime || 0) + ' paused ' + m.paused);
+            }, 1000);
+        }
+        // An older voice loaded on the tap plays once it can (see above); a loaded one at once.
+        if (m.readyState >= 3) go();
+        else {
+            m.addEventListener('canplaythrough', go);
+            setTimeout(go, 1500);
+        }
     }
 
     function smsInsertEmoji(name) {
@@ -1195,13 +1294,13 @@
         if (!g) return '';
         var hm = minutesToLabel(g.min);
         var today = env && typeof env.day === 'number' ? env.day : null;
-        if (today === null) return 'Day ' + g.day + ' ' + hm;
+        if (today === null) return L('Day {d} {t}', { d: g.day, t: hm });
         var ago = today - g.day;
-        if (ago === 0) return 'Today ' + hm;
-        if (ago === 1) return 'Yesterday ' + hm;
+        if (ago === 0) return L('Today {t}', { t: hm });
+        if (ago === 1) return L('Yesterday {t}', { t: hm });
         var dow = SMS_WEEKDAYS.indexOf(env.day_of_week);
-        if (ago > 1 && ago < 7 && dow >= 0) return SMS_WEEKDAYS[((dow - ago) % 7 + 7) % 7] + ' ' + hm;
-        return 'Day ' + g.day + ' ' + hm;
+        if (ago > 1 && ago < 7 && dow >= 0) return L(SMS_WEEKDAYS[((dow - ago) % 7 + 7) % 7]) + ' ' + hm;
+        return L('Day {d} {t}', { d: g.day, t: hm });
     }
 
     // Whether a time line goes above m. Only messages that know their game time get one.
@@ -1230,12 +1329,12 @@
 
     function pickSmsPhoto() {
         if (!smsThread || smsSending || smsClearingAt) return;
-        if (smsPhotoPending) {
-            setNote('Finish choosing the photo on the PC first.', false);
+        if (smsPhotoPending || moPhotoPending) {
+            setNote(L('Finish choosing the photo on the PC first.'), false);
             return;
         }
         if (aiPending || wallPending) {
-            setNote('Another phone service request is still running. Try again in a moment.', false);
+            setNote(L('Another phone service request is still running. Try again in a moment.'), false);
             return;
         }
         var section = smsThread;
@@ -1243,11 +1342,11 @@
             aiService = v && typeof v === 'object' ? v : null;
             if (smsThread !== section) return;
             if (!aiAlive(aiService)) {
-                setNote('Adding photos needs AI Phone Service running on this PC.', true);
+                setNote(L('Adding photos needs AI Phone Service running on this PC.'), true);
                 return;
             }
             if (!aiTakesRequests(aiService)) {
-                setNote(AI_NO_GUARDIAN, true);
+                setNote(L(AI_NO_GUARDIAN), true);
                 return;
             }
             smsSeq += 1;
@@ -1262,10 +1361,10 @@
             }, function (err) {
                 smsPhotoPending = null;
                 syncSmsPhotoComposer();
-                setNote('Could not open the photo picker: ' + errText(err), true);
+                setNote(L('Could not open the photo picker: {why}', { why: errText(err) }), true);
             });
         }, function (err) {
-            setNote('Could not reach AI Phone Service: ' + errText(err), true);
+            setNote(L('Could not reach AI Phone Service: {why}', { why: errText(err) }), true);
         });
     }
 
@@ -1297,7 +1396,7 @@
             if (Date.now() - asked.at > SMS_PHOTO_PICK_MS) {
                 smsPhotoPending = null;
                 syncSmsPhotoComposer();
-                if (smsThread === asked.section) setNote('No answer from AI Phone Service. Check that it is running on this PC.', true);
+                if (smsThread === asked.section) setNote(L('No answer from AI Phone Service. Check that it is running on this PC.'), true);
             }
             return;
         }
@@ -1321,14 +1420,14 @@
         var photo = smsThread && smsPhotos[smsThread] ? smsPhotos[smsThread] : null;
         if (pick) {
             pick.className = 'sms-photo-btn' + (waiting ? ' waiting' : '') + (smsPhotoPending || smsSending ? ' off' : '');
-            pick.setAttribute('title', waiting ? 'Choosing a photo on the PC' : 'Add photo');
+            pick.setAttribute('title', waiting ? L('Choosing a photo on the PC') : L('Add photo'));
         }
         if (preview) {
             while (preview.firstChild) preview.removeChild(preview.firstChild);
             if (waiting) {
                 preview.style.display = 'flex';
                 preview.appendChild(node('span', 'sms-photo-spinner'));
-                preview.appendChild(node('span', 'sms-photo-wait', 'Choose a photo on your PC. If covered by the game, press Alt+Tab.'));
+                preview.appendChild(node('span', 'sms-photo-wait', L('Choose a photo on your PC. If covered by the game, press Alt+Tab.')));
             } else if (photo) {
                 preview.style.display = 'flex';
                 var thumb = node('img', 'sms-photo-thumb');
@@ -1336,12 +1435,12 @@
                 thumb.setAttribute('alt', 'Selected photo');
                 preview.appendChild(thumb);
                 var meta = node('div', 'sms-photo-meta');
-                meta.appendChild(node('div', 'sms-photo-ready', 'Photo ready'));
+                meta.appendChild(node('div', 'sms-photo-ready', L('Photo ready')));
                 meta.appendChild(node('div', 'sms-photo-size', photo.width + ' × ' + photo.height));
                 preview.appendChild(meta);
                 var remove = node('button', 'sms-photo-remove', '×');
                 remove.type = 'button';
-                remove.setAttribute('title', 'Remove photo');
+                remove.setAttribute('title', L('Remove photo'));
                 var section = smsThread;
                 onTap(remove, function (e) {
                     e.stopPropagation();
@@ -1417,7 +1516,7 @@
     }
 
     function smsEarlierRow(hidden) {
-        var row = node('div', 'sms-earlier', '查看更早的消息（' + hidden + '）');
+        var row = node('div', 'sms-earlier', L('查看更早的消息（{n}）', { n: hidden }));
         row.id = 'sms-earlier';
         onTap(row, function (e) {
             e.stopPropagation();
@@ -1609,7 +1708,7 @@
         var b = node('button', 'sms-jump' + (smsStick ? '' : ' show'));
         b.id = 'sms-jump';
         b.type = 'button';
-        b.setAttribute('title', 'Latest');
+        b.setAttribute('title', L('Latest'));
         var svg = glyphSvg('0 0 24 24');
         svg.setAttribute('class', 'sms-jump-glyph');
         glyphPath(svg, 'M5.3 8.6a1.1 1.1 0 0 1 1.6 0L12 13.7l5.1-5.1a1.1 1.1 0 1 1 1.6 1.6l-5.9 5.9a1.1 1.1 0 0 1-1.6 0L5.3 10.2a1.1 1.1 0 0 1 0-1.6z', '#ffffff');
@@ -1744,7 +1843,7 @@
     function smsPlusButton(action) {
         var btn = node('button', 'sms-plus');
         btn.type = 'button';
-        btn.setAttribute('title', 'New group');
+        btn.setAttribute('title', L('New group'));
         var icon = node('div', 'sms-plus-icon');
         icon.appendChild(node('div', 'sms-np-h'));
         icon.appendChild(node('div', 'sms-np-v'));
@@ -1770,17 +1869,17 @@
             groupListRows(wrap, groupsShown, data.members || [], data.env);
             if (groupsShown.length) wrap.appendChild(node('div', 'ph-group-sep'));
         } catch (e) {
-            setNote('Groups: ' + errText(e), true);
+            setNote(L('Groups: {why}', { why: errText(e) }), true);
         }
         if (shown !== TX_ALL && !groupsShown.length && !contactsShown.length) {
             var emptyFolder = card();
-            emptyFolder.appendChild(node('div', 'ph-empty', '这个分组里还没有聊天。点「管理」把聊天放进来。'));
+            emptyFolder.appendChild(node('div', 'ph-empty', L('这个分组里还没有聊天。点「管理」把聊天放进来。')));
             wrap.appendChild(emptyFolder);
             return wrap;
         }
         if (!data.contacts.length) {
             var none = card();
-            none.appendChild(node('div', 'ph-empty', 'Nobody to text yet. Open Contacts and tap Message on someone.'));
+            none.appendChild(node('div', 'ph-empty', L('Nobody to text yet. Open Contacts and tap Message on someone.')));
             wrap.appendChild(none);
             return wrap;
         }
@@ -1812,11 +1911,11 @@
             var heartLine = p.fresh ? heartText(row.status) : '';
             if (heartLine) sub.appendChild(node('span', 'sms-heart inline', heartLine));
             who.appendChild(sub);
-            var lastText = row.last && row.last.voice ? '[语音]'
+            var lastText = row.last && row.last.voice && !row.last.voice.of ? L('[语音]')
                 : row.last && row.last.image
-                ? (row.last.text === SMS_PHOTO_TEXT ? 'Photo' : 'Photo: ' + row.last.text)
+                ? (row.last.text === SMS_PHOTO_TEXT ? L('Photo') : L('Photo: {text}', { text: row.last.text }))
                 : row.last ? row.last.text : '';
-            var preview = row.last ? (row.last.side === 'mine' ? 'You: ' : '') + lastText : 'No messages yet';
+            var preview = row.last ? (row.last.side === 'mine' ? L('You: ') : '') + lastText : L('No messages yet');
             var previewEl = node('div', 'sms-preview' + (row.unread > 0 ? ' new' : ''));
             emojiFill(previewEl, smsClip(preview, 40));
             who.appendChild(previewEl);
@@ -1887,7 +1986,7 @@
         var photo = smsPhotos[section] || null;
         if (!body && !photo) return;
         if (body.length > SMS_TEXT_MAX) {
-            setNote('Keep it under ' + SMS_TEXT_MAX + ' characters.', true);
+            setNote(L('Keep it under {n} characters.', { n: SMS_TEXT_MAX }), true);
             return;
         }
         smsSending = true;
@@ -1934,24 +2033,24 @@
         if (!data.contact) {
             wrap.appendChild(subHeader('chat'));
             var none = card();
-            none.appendChild(node('div', 'ph-empty', 'This person can no longer be texted.'));
+            none.appendChild(node('div', 'ph-empty', L('This person can no longer be texted.')));
             wrap.appendChild(none);
             return wrap;
         }
         var nav = node('div', 'sms-nav');
-        var back = node('div', 'ph-back', '< Back');
+        var back = node('div', 'ph-back', L('< Back'));
         onTap(back, function (e) {
             e.stopPropagation();
             open(backTarget('chat'));
         });
         nav.appendChild(back);
         var peer = node('div', 'sms-peer');
-        peer.setAttribute('title', 'Edit how ' + (data.contact.first_name || fullName(data.contact)) + ' talks');
+        peer.setAttribute('title', L('Edit how {name} talks', { name: data.contact.first_name || fullName(data.contact) }));
         peer.appendChild(faceAvatar(data.contact));
         peer.appendChild(node('div', 'sms-peer-name', fullName(data.contact) + ' \u203A'));
         var loverWord = loverTag(data.meId, data.contact, smsMembersSeen);
         if (loverWord) peer.appendChild(node('div', 'sms-lover', '\u2665 ' + loverWord));
-        var pres = node('div', 'sms-presence off', 'Offline');
+        var pres = node('div', 'sms-presence off', L('Offline'));
         pres.id = 'sms-presence';
         peer.appendChild(pres);
         onTap(peer, function (e) {
@@ -1988,14 +2087,22 @@
                 !(smsScrollRide && !smsScrollRide.dead) && document.getElementById('sms-earlier')) smsShowEarlier();
         });
         var list = data.messages;
+        // Voices that read out a text are drawn inside its bubble and leave the list; they still
+        // count as seen, so a later redraw does not take them for new.
+        var voicesOf = smsVoicesOf(list, smsArrived);
+        var heard = {};
+        for (var vk in voicesOf) heard[voicesOf[vk].msgId] = true;
+        var kept = [];
+        for (var li = 0; li < list.length; li++) if (!heard[list[li].id]) kept.push(list[li]);
+        list = kept;
         if (data.loading) {
             var wait = node('div', 'sms-loading');
             wait.appendChild(node('div', 'sms-loading-spin'));
-            wait.appendChild(node('div', 'sms-loading-text', '正在载入对话…'));
+            wait.appendChild(node('div', 'sms-loading-text', L('正在载入对话…')));
             wait._k = 'loading';
             log.appendChild(wait);
         } else if (!list.length) {
-            smsKeyed(log, node('div', 'sms-empty', 'No messages yet. Say hi to ' + (data.contact.first_name || fullName(data.contact)) + '.'), 'empty');
+            smsKeyed(log, node('div', 'sms-empty', L('No messages yet. Say hi to {name}.', { name: data.contact.first_name || fullName(data.contact) })), 'empty');
         }
         smsChatData = data;
         if (smsWindow.section !== data.section) smsWindow = { section: data.section, count: SMS_PAGE };
@@ -2003,6 +2110,7 @@
         if (start > 0) smsKeyed(log, smsEarlierRow(start), 'earlier');
         var known = smsArrived;
         var nextSeen = {};
+        for (var hk in heard) nextSeen[hk] = true;
         var freshN = 0;
         for (var i = 0; i < list.length; i++) {
             var m = list[i];
@@ -2030,6 +2138,8 @@
             var joinNext = !!next && next.side === m.side && next.at - m.at < SMS_RUN_GAP_MS && !smsStamped(m, next);
             var row = node('div', 'sms-row ' + (m.side === 'mine' ? 'mine' : 'theirs') + (joinPrev ? ' join' : '') + (joinNext ? '' : ' tail') + (arriving ? ' sms-in' : ''));
             var bubble = smsMessageBubble(m);
+            // A voice that came after its text was drawn fades in on its own.
+            if (voicesOf[m.id]) bubble.appendChild(smsVoiceChip(voicesOf[m.id].voice, voicesOf[m.id].arriving && !arriving));
             if (arriving) setSmsDelay(bubble, delay);
             var time = m.game ? node('div', 'sms-time', smsGameClock(m.game)) : null;
             if (time && m.side === 'mine') row.appendChild(time);
@@ -2040,7 +2150,10 @@
         }
         // The loading shell has no messages yet; what it is filled with first is the thread as it
         // was, not texts that just arrived.
-        if (!data.loading) smsArrived = nextSeen;
+        if (!data.loading) {
+            smsArrived = nextSeen;
+            smsVoicePreload(data.messages);
+        }
         var receipt = node('div', 'sms-receipt', '');
         receipt.id = 'sms-receipt';
         smsKeyed(log, receipt, 'receipt');
@@ -2063,7 +2176,7 @@
         input.id = 'sms-box';
         applyUiFont(input);
         input.setAttribute('maxlength', String(SMS_TEXT_MAX));
-        input.setAttribute('placeholder', 'Message');
+        input.setAttribute('placeholder', L('Message'));
         input.setAttribute('rows', '1');
         input.addEventListener('input', function () {
             smsDraft = input.value;
@@ -2091,7 +2204,7 @@
         var send = node('button', 'sms-send off');
         send.id = 'sms-send';
         send.type = 'button';
-        send.setAttribute('title', 'Send');
+        send.setAttribute('title', L('Send'));
         send.appendChild(sendGlyph());
         onTap(send, function (e) {
             e.stopPropagation();
@@ -2100,7 +2213,7 @@
         var pick = node('button', 'sms-photo-btn');
         pick.id = 'sms-photo';
         pick.type = 'button';
-        pick.setAttribute('title', 'Add photo');
+        pick.setAttribute('title', L('Add photo'));
         pick.appendChild(photoGlyph());
         onTap(pick, function (e) {
             e.stopPropagation();
@@ -2108,7 +2221,7 @@
         }, { silent: true });
         var smile = node('button', 'sms-emoji-btn' + (smsEmojiOpen ? ' on' : ''));
         smile.type = 'button';
-        smile.setAttribute('title', 'Emoji');
+        smile.setAttribute('title', L('Emoji'));
         if (emojiSet) {
             var face = emojiSet.byName['微笑'] || emojiSet.list[0].id;
             smile.appendChild(emojiImg(face, ''));

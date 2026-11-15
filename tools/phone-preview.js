@@ -16,6 +16,8 @@ const { GameClient } = require('../lib/game');
 
 const PORT = Number(process.argv[2]) || 8765;
 const PHONE = path.resolve(__dirname, '..', '..', 'Mods', 'InGame', 'HouseholdBoard_I6IXIO', 'ui', 'phone');
+// The focus window (face to face, homework, the day's tasks) at /focus/.
+const FOCUS = path.resolve(PHONE, '..', 'focus');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
     '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webm': 'video/webm', '.svg': 'image/svg+xml', '.json': 'application/json' };
 const game = new GameClient();
@@ -24,7 +26,7 @@ const game = new GameClient();
 const STUB = [
     '<script>',
     'window.engine = { call: function () { return Promise.resolve(null); }, on: function () {}, trigger: function () {} };',
-    'window.inzoi = { view: { hover: function () {}, setContentRect: function () {} },',
+    'window.inzoi = { view: { hover: function () {}, setContentRect: function () {} }, trigger: { onActivated: function () {} },',
     '  saveState: { register: function () {}, onLoad: function () {} },',
     '  cli: { execute: function (cmd, params) {',
     '    return fetch("/cli", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd: cmd, params: params || {} }) })',
@@ -34,8 +36,8 @@ const STUB = [
     '</script>'
 ].join('\n');
 
-function page() {
-    let html = fs.readFileSync(path.join(PHONE, 'index.html'), 'utf8');
+function page(dir) {
+    let html = fs.readFileSync(path.join(dir || PHONE, 'index.html'), 'utf8');
     html = html.replace(/<script src="coui:\/\/inzoi\/cohtml\.js"><\/script>\s*<script src="coui:\/\/inzoi\/mod\/inzoi-sdk\.js"><\/script>/, STUB);
     html = html.replace(/<link rel="stylesheet" href="coui:[^"]*">/g, '<style>:root { --inzoi-font-ui: "Microsoft YaHei UI", "Segoe UI", sans-serif; }</style>');
     return html;
@@ -84,8 +86,14 @@ http.createServer((req, res) => {
         res.end(page());
         return;
     }
-    const file = path.resolve(PHONE, '.' + url);
-    if (!file.startsWith(PHONE) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    if (url === '/focus/' || url === '/focus/index.html') {
+        res.writeHead(200, { 'Content-Type': TYPES['.html'], 'Cache-Control': 'no-store' });
+        res.end(page(FOCUS));
+        return;
+    }
+    const base = url.indexOf('/focus/') === 0 ? FOCUS : PHONE;
+    const file = path.resolve(base, '.' + (base === FOCUS ? url.slice('/focus'.length) : url));
+    if (!file.startsWith(base) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
         res.writeHead(404);
         res.end();
         return;

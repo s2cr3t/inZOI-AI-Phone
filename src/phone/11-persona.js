@@ -128,9 +128,9 @@
             return saveJson('profile', next, section);
         }).then(function () {
             personaDraft = null;
-            personaNote = { ok: true, text: 'Saved. The next reply uses it.' };
+            personaNote = { ok: true, text: L('Saved. The next reply uses it.') };
         }, function (err) {
-            personaNote = { ok: false, text: 'Could not save: ' + errText(err) };
+            personaNote = { ok: false, text: L('Could not save: {why}', { why: errText(err) }) };
         }).then(function () {
             personaSaving = false;
             personaRenderedKey = '';
@@ -144,7 +144,7 @@
         wrap.appendChild(subHeader('persona'));
         if (!data.contact) {
             var none = card();
-            none.appendChild(node('div', 'ph-empty', 'This person can no longer be texted.'));
+            none.appendChild(node('div', 'ph-empty', L('This person can no longer be texted.')));
             wrap.appendChild(none);
             personaRenderedKey = '';
             return wrap;
@@ -163,9 +163,9 @@
         who.appendChild(whoText);
         wrap.appendChild(who);
 
-        var styleCard = card('HOW ' + first.toUpperCase() + ' TALKS TO YOU');
+        var styleCard = card(L('HOW {name} TALKS TO YOU', { name: first.toUpperCase() }));
         styleCard.appendChild(personaField('pe-style', draft.style, PERSONA_STYLE_MAX, 9,
-            'Tone, words they use, how they react when scolded...', function (v) {
+            L('Tone, words they use, how they react when scolded...'), function (v) {
                 draft.style = v;
                 draft.dirty = true;
                 personaNote = null;
@@ -176,7 +176,7 @@
         var styleN = node('div', 'pe-count', String(draft.style || '').length + ' / ' + PERSONA_STYLE_MAX);
         styleN.id = 'pe-style-n';
         styleFoot.appendChild(styleN);
-        var styleReset = node('button', 'pe-reset' + (def.known && draft.style !== def.style ? '' : ' off'), 'Use default');
+        var styleReset = node('button', 'pe-reset' + (def.known && draft.style !== def.style ? '' : ' off'), L('Use default'));
         styleReset.id = 'pe-style-reset';
         styleReset.setAttribute('type', 'button');
         onTap(styleReset, function (e) {
@@ -191,14 +191,14 @@
         styleFoot.appendChild(styleReset);
         styleCard.appendChild(styleFoot);
         styleCard.appendChild(node('div', 'ai-hint', def.known
-            ? (def.style ? 'Only with the person you are playing now. Leave it empty for no set style.'
-                : 'There is no built-in style for this relationship. Anything you write here is used as is.')
-            : 'The reply service has not shared the built-in style yet. Start it, then come back.'));
+            ? (def.style ? L('Only with the person you are playing now. Leave it empty for no set style.')
+                : L('There is no built-in style for this relationship. Anything you write here is used as is.'))
+            : L('The reply service has not shared the built-in style yet. Start it, then come back.')));
         wrap.appendChild(styleCard);
 
-        var extraCard = card('ABOUT ' + first.toUpperCase());
+        var extraCard = card(L('ABOUT {name}', { name: first.toUpperCase() }));
         extraCard.appendChild(personaField('pe-extra', draft.extra, PERSONA_EXTRA_MAX, 5,
-            'Background, habits, secrets, what they care about...', function (v) {
+            L('Background, habits, secrets, what they care about...'), function (v) {
                 draft.extra = v;
                 draft.dirty = true;
                 personaNote = null;
@@ -209,7 +209,7 @@
         var extraN = node('div', 'pe-count', String(draft.extra || '').length + ' / ' + PERSONA_EXTRA_MAX);
         extraN.id = 'pe-extra-n';
         extraFoot.appendChild(extraN);
-        var extraReset = node('button', 'pe-reset' + (draft.extra !== def.extra ? '' : ' off'), 'Use default');
+        var extraReset = node('button', 'pe-reset' + (draft.extra !== def.extra ? '' : ' off'), L('Use default'));
         extraReset.id = 'pe-extra-reset';
         extraReset.setAttribute('type', 'button');
         onTap(extraReset, function (e) {
@@ -223,13 +223,13 @@
         });
         extraFoot.appendChild(extraReset);
         extraCard.appendChild(extraFoot);
-        extraCard.appendChild(node('div', 'ai-hint', 'Used in every chat with ' + first + ', and in Moments.'));
+        extraCard.appendChild(node('div', 'ai-hint', L('Used in every chat with {name}, and in Moments.', { name: first })));
         wrap.appendChild(extraCard);
 
         var actions = card();
         var btns = node('div', 'ph-btns');
         btns.style.marginTop = '0';
-        var save = node('button', 'ph-btn ' + (draft.dirty && !personaSaving ? 'on' : 'off') + ' last', personaSaving ? 'Saving...' : 'Save');
+        var save = node('button', 'ph-btn ' + (draft.dirty && !personaSaving ? 'on' : 'off') + ' last', personaSaving ? L('Saving...') : L('Save'));
         save.id = 'pe-save';
         save.setAttribute('type', 'button');
         onTap(save, function (e) {
@@ -239,7 +239,7 @@
         btns.appendChild(save);
         actions.appendChild(btns);
         if (personaNote) actions.appendChild(node('div', 'ai-result ' + (personaNote.ok ? 'ok' : 'err'), personaNote.text));
-        actions.appendChild(node('div', 'ai-hint', 'This changes who ' + first + ' is and how they talk. What they can do in the game, and how replies are written, stay the same.'));
+        actions.appendChild(node('div', 'ai-hint', L('This changes who {name} is and how they talk. What they can do in the game, and how replies are written, stay the same.', { name: first })));
         wrap.appendChild(actions);
         personaRenderedKey = personaRenderKey(data);
         return wrap;

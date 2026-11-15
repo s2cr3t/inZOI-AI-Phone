@@ -13,6 +13,7 @@
     var VOICE_FRESH_MS = 8000;
     var VOICE_SEND_S = 2;
     var VOICE_ERRORS = { no_microphone: 'No microphone found', unclear: 'Didn\'t catch that, say it again' };
+    // VOICE_ERRORS and the notes below are shown through L() (01-lang.js).
     var voiceSeq = Date.now() * 10;
     var voiceStampAt = 0;
     var voiceTimer = null;
@@ -62,7 +63,7 @@
 
     function voiceCountdown(left) {
         if (left <= 0) { voiceSend(); return; }
-        voiceNote('Sending in ' + left + ' · press any key to edit', 'heard');
+        voiceNote(L('Sending in {n} · press any key to edit', { n: left }), 'heard');
         voiceWaiting = true;
         voiceTimer = setTimeout(function () { voiceTimer = null; voiceCountdown(left - 1); }, 1000);
     }
@@ -119,7 +120,7 @@
         if (voiceRec) {
             voiceAsk('stop');
             voiceRecEnd();
-            voiceNote('Working out what you said...', 'thinking');
+            voiceNote(L('Working out what you said...'), 'thinking');
             return;
         }
         var box = voiceBox();
@@ -128,11 +129,11 @@
         var started = voiceRec = Date.now();
         voiceHeard = false;
         voiceSyncField();
-        voiceNote('Listening... tap ■ when done', 'listening');
+        voiceNote(L('Listening... tap ■ when done'), 'listening');
         setTimeout(function () {
             if (voiceRec !== started || voiceHeard) return;
             voiceRecEnd();
-            voiceNote('Voice input is not running', 'err');
+            voiceNote(L('Voice input is not running'), 'err');
             voiceTimer = setTimeout(function () { voiceTimer = null; voiceNote(''); }, 3000);
         }, VOICE_START_WAIT_MS);
     }
@@ -147,7 +148,7 @@
         if (!mic) {
             mic = node('button', 'sms-mic');
             mic.type = 'button';
-            mic.setAttribute('title', 'Voice input');
+            mic.setAttribute('title', L('Voice input'));
             onTap(mic, function (e) { e.stopPropagation(); voiceMicTap(); }, { silent: true });
             field.appendChild(mic);
         }
@@ -176,12 +177,12 @@
         if (v.state !== 'listening' && voiceRec) voiceRecEnd();
         if (v.state === 'listening') {
             if (voiceRec) voiceHeard = true;
-            voiceNote(voiceRec ? 'Listening... tap ■ when done' : 'Listening... release ' + key, 'listening');
-        } else if (v.state === 'thinking') voiceNote('Working out what you said...', 'thinking');
+            voiceNote(voiceRec ? L('Listening... tap ■ when done') : L('Listening... release {key}', { key: key }), 'listening');
+        } else if (v.state === 'thinking') voiceNote(L('Working out what you said...'), 'thinking');
         else if (v.state === 'heard' && v.text) {
             if (voiceType(v.text)) voiceCountdown(VOICE_SEND_S);
         } else if (v.state === 'error') {
-            voiceNote(VOICE_ERRORS[v.why] || 'Voice input did not work', 'err');
+            voiceNote(L(VOICE_ERRORS[v.why] || 'Voice input did not work'), 'err');
             voiceTimer = setTimeout(function () { voiceTimer = null; voiceNote(''); }, 3000);
         } else voiceNote('');
     }

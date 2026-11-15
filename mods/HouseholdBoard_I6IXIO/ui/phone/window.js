@@ -63,6 +63,11 @@
         try { if (window.inzoi && inzoi.view && inzoi.view.setContentRect) inzoi.view.setContentRect(AWAY[0], AWAY[1], AWAY[2], AWAY[3]); } catch (e) {}
     }
     root._claimNothing = _claimNothing;
+    // Something on this page holding the whole screen (the 成长册 that opens over the game when a
+    // stage of life ends, src/phone/21-booklet.js) sets root._screenHeld; while it is set the
+    // window never gives the screen away, hidden or not, or the booklet's pages and its close
+    // button would take no clicks.
+    function _screenRect() { return [0, 0, window.innerWidth || 1920, window.innerHeight || 1080]; }
     var _hovering = false;
     function setHover(bOver) {
         _hovering = !!bOver;
@@ -128,7 +133,7 @@
         setInterval(function () {
             // Hidden on purpose only (display none): a size that merely reads 0 for a frame after
             // showing must not take a shown window's area away.
-            if (root.style.display === 'none') {
+            if (root.style.display === 'none' && !root._screenHeld) {
                 var now = Date.now();
                 if (!hiddenSince) hiddenSince = now;
                 if (now - hiddenSince < 3000 || now - zeroAt >= 2000) {
@@ -179,7 +184,7 @@
                     setTimeout(function () { if (root.offsetWidth && root.offsetHeight) _reportContentRect(); }, 60);
                     return;
                 }
-                var r = off ? AWAY : [root.offsetLeft, root.offsetTop, root.offsetWidth, root.offsetHeight];
+                var r = root._screenHeld ? _screenRect() : off ? AWAY : [root.offsetLeft, root.offsetTop, root.offsetWidth, root.offsetHeight];
                 inzoi.view.setContentRect(r[0], r[1], r[2], r[3]);
                 var k = r.join(',');
                 if (k !== _lastRect) {
@@ -200,7 +205,7 @@
         if (document.hidden) {
             try { var a = document.activeElement; if (a && a !== document.body && a.blur) a.blur(); } catch (e) {}
             setHover(false);
-            _claimNothing();
+            if (!root._screenHeld) _claimNothing();
         } else {
             window.__uimod_rectForce = 1;
             if (typeof root._rectForget === 'function') root._rectForget();

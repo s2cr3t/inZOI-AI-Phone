@@ -142,7 +142,11 @@
         if (b.moments && b.moments.length) pages.push({ kind: 'moments', title: '日常点滴' });
         if (b.achievements && b.achievements.length) pages.push({ kind: 'achievements', title: '获得的成就' });
         if (b.character || (b.traits && b.traits.length)) pages.push({ kind: 'character', title: '长成的样子' });
-        if (b.letter) pages.push({ kind: 'letter', title: '写给你' });
+        // The family's own letters (lib/booklet.js familyLetters), a page each, signed; the
+        // booklet's own unsigned letter only when nobody in the family wrote one.
+        var letters = b.letters && b.letters.length ? b.letters : null;
+        if (letters) letters.forEach(function (l) { pages.push({ kind: 'family', title: (l.relation || l.first || '家人') + '的信', letter: l }); });
+        else if (b.letter) pages.push({ kind: 'letter', title: '写给你' });
         return pages;
     }
 
@@ -183,6 +187,13 @@
                 b.traits.forEach(function (t) { chips.appendChild(node('span', 'bk-chip', t)); });
             }
             if (b.character) body.appendChild(node('div', 'bk-note-text bk-gap', b.character));
+        } else if (page.kind === 'family') {
+            var l = page.letter;
+            body.appendChild(node('div', 'bk-letter', l.text));
+            var from = body.appendChild(node('div', 'bk-letter-from'));
+            var writer = memberById(data.members, l.id);
+            if (writer) from.appendChild(faceAvatar(writer));
+            from.appendChild(node('div', 'bk-letter-sign', '—— ' + (l.relation ? l.relation + ' ' : '') + l.name));
         } else if (page.kind === 'letter') {
             body.appendChild(node('div', 'bk-letter', b.letter));
             body.appendChild(node('div', 'bk-letter-sign', b.final ? '—— 这一生，谢谢你' : '—— 下一段，也要好好的'));
@@ -376,6 +387,8 @@
     });
 
     function bkStageRect(full) {
+        // While it is up the phone's window guard (window.js) must not give the screen away.
+        wf.root._screenHeld = !!full;
         try {
             if (full) {
                 inzoi.view.setContentRect(0, 0, window.innerWidth || 1920, window.innerHeight || 1080);
@@ -443,6 +456,7 @@
         if (page.kind === 'achievements') return b.achievements.slice();
         if (page.kind === 'character') return (b.traits || []).slice();
         if (page.kind === 'letter') return ['写给你'];
+        if (page.kind === 'family') return [page.title];
         return [b.name || b.stageZh];
     }
 
@@ -1542,6 +1556,14 @@
         var fancy = !!fx;
         function paintLeft(box) {
             var page = st.pages[st.page];
+            // A family member's letter is drawn by the style's picture for a letter, with their
+            // words; this page only (the booklet itself is st.book and stays as it is).
+            var b = st.book;
+            if (page.kind === 'family') {
+                b = Object.create(st.book);
+                b.letter = page.letter.text;
+                page = { kind: 'letter', title: page.title };
+            }
             while (box.firstChild) box.removeChild(box.firstChild);
             if (theme === 'child') bkArtChild(box, page, b, data);
             else if (theme === 'adult') bkArtAdult(box, page, b, data);

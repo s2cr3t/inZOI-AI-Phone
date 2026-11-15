@@ -2,11 +2,11 @@
     // The apps of this phone
     // ------------------------------------------------------------------
     screens.home = { load: loadHome, render: renderHome };
-    registerApp({ id: 'family', label: 'Family', cls: 'ic-family', category: 'Household', version: '1.4',
-        desc: 'Your household at a glance', subtitle: 'Your household at a glance',
-        featured: 'Know how everyone at home is doing',
-        about: 'Everyone who lives with you on one page: their mood, how hungry, tired or lonely they are, and where they are right now.',
-        screens: { family: { load: loadFamily, render: renderFamily } } });
+    registerApp({ id: 'family', label: 'My Home', cls: 'ic-family', category: 'Household', version: '2.0',
+        desc: 'The floor plan of your home', subtitle: 'The floor plan of your home',
+        featured: 'See your home from above',
+        about: 'Your home drawn from the game, storey by storey: the walls, every room by name, the furniture, doors and windows, and where everyone at home is right now.',
+        screens: { family: { load: loadFamily, render: renderFamily }, homeRoom: { load: loadFamily, render: renderHomeRoom, title: '设定房间', parent: 'family' } } });
     registerApp({ id: 'bonds', label: 'Bonds', cls: 'ic-bonds', category: 'Household', version: '1.2',
         desc: 'Friendship, romance and family ties', subtitle: 'Friendship, romance and family ties',
         about: 'How close the character you play is to each person they know, as friendship, romance, family and business.',
@@ -20,7 +20,10 @@
             oa: { load: loadOa, render: renderOa, title: 'OA' },
             oaApply: { load: loadOa, render: renderOaApply, title: '发起申请', parent: 'oa' },
             oaOrg: { load: loadOa, render: renderOaOrg, title: '组织架构', parent: 'oa' },
-            oaPay: { load: loadOa, render: renderOaPay, title: '薪酬职级', parent: 'oa' }
+            oaPay: { load: loadOa, render: renderOaPay, title: '薪酬职级', parent: 'oa' },
+            oaManage: { load: loadOa, render: renderOaManage, title: '管理台', parent: 'oa' },
+            oaStaff: { load: loadOa, render: renderOaStaff, title: '员工详情', parent: 'oaManage' },
+            oaCand: { load: loadOa, render: renderOaCand, title: '简历', parent: 'oaManage' }
         } });
     registerApp({ id: 'school', label: '成绩', cls: 'ic-school', glyph: schoolGlyph, category: 'Education', version: '1.0',
         desc: '成绩单、课表和老师评语', subtitle: '成绩单、课表和老师评语',
@@ -131,6 +134,7 @@
         about: 'Phone sounds and the wallpaper, including your own pictures.',
         screens: {
             settings: { load: loadSettings, render: renderSettings },
+            language: { load: loadSettings, render: renderLanguage, title: 'Language', parent: 'settings' },
             sounds: { load: loadSettings, render: renderSounds, title: 'Sounds', parent: 'settings' },
             wallpaper: { load: loadWallpaper, render: renderWallpaper, title: 'Wallpaper', parent: 'settings' },
             study: { load: loadStudy, render: renderStudy, title: '雅思学习', parent: 'settings' }

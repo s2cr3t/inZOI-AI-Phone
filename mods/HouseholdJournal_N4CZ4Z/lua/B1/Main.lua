@@ -25,6 +25,7 @@
 -- bridge/prefs.cfg: <seq>:<target>:<preference id>:<1|0>;...
 --   B2 Zoi.PreferenceSetter gives the character that like (1) or dislike (0) and prints a K line.
 -- bridge/career.cfg: <seq>:<actor>:r:<company entity> or <seq>:<actor>:q:<quest id>/<mission id>;...
+--   (also w and k: <quest id>/<mission id>/..., the day's planned work missions, lib/workplan.js)
 --   B2 Zoi.CareerServer leaves the company (an OA request the boss granted) or adds a work mission
 --   (a task the boss handed out) and prints a C line.
 -- <phone mod>/ui/focus/camera.cfg: <ms>:<open|close>:<player>:<target>, written by the phone mod's

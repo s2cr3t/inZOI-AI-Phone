@@ -279,7 +279,7 @@
                     if (screenId === 'messages') gmScroll();
                 }
                 dcReadyCurtain();
-                if (txCurtain) txSplashCheck();
+                if (txCurtain) txSplashCheck(); if (mmCurtain) mmSplashCheck();
                 if (flCurtain) flSplashCheck();
                 if (nwCurtain) nwSplashCheck();
                 if (oaCurtain) oaSplashCheck();
@@ -310,7 +310,7 @@
                 setNote(msg, true);
                 noteFromLoad = true;
                 if (dcCurtain) dcFailCurtain(dcCurtain);
-                if (txCurtain) txSplashCheck();
+                if (txCurtain) txSplashCheck(); if (mmCurtain) mmSplashCheck();
                 if (flCurtain) flSplashCheck();
                 if (nwCurtain) nwSplashCheck();
                 if (oaCurtain) oaSplashCheck();
@@ -419,6 +419,7 @@
             return;
         }
         if (txCurtain && screenId !== txCurtain.screen) txCurtainStop();
+        if (mmCurtain && screenId !== mmCurtain.screen) mmCurtainStop();
         if (flCurtain && screenId !== flCurtain.screen) flCurtainStop();
         if (nwCurtain && screenId !== nwCurtain.screen) nwCurtainStop();
         if (oaCurtain && screenId !== oaCurtain.screen) oaCurtainStop();
@@ -426,6 +427,12 @@
         if (!playedYoung && !dcCurtain && !txCurtain &&
             screenId === 'texts' && appOfScreen(current) !== 'texts') {
             txCurtainOpen(screenId);
+            return;
+        }
+        // Moments opens on its own warm veil with the fanning photo cards (index.html).
+        if (!playedYoung && !dcCurtain && !txCurtain && !mmCurtain &&
+            screenId === 'moments' && appOfScreen(current) !== 'moments') {
+            mmCurtainOpen(screenId);
             return;
         }
         // Freelance reads the service's board and the game's career record; the white network
@@ -511,7 +518,7 @@
         }
         var ghost = kind ? captureOutgoing(from) : null;
         if (!ghost) kind = null;
-        if (dcCurtain || txCurtain || flCurtain) {
+        if (dcCurtain || txCurtain || mmCurtain || flCurtain) {
             if (ghost) releaseOutgoing(ghost);
             ghost = null;
             kind = null;

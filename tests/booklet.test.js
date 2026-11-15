@@ -66,3 +66,34 @@ test('growing up writes the stage left from its own records; a stage jumped thro
     assert.equal(after.people['8'].books.length, 1, 'the cake still ends the stage with its booklet');
     assert.equal(after.people['8'].books[0].to, 10);
 });
+
+test('the family writes a page: the closest of the household who can hold a pen, each in their own voice', async () => {
+    const asked = [];
+    const d = {
+        log: { info() {}, warn() {} },
+        hhMembers: [
+            { entity_id: 7, first_name: '满', last_name: '小', age_group: 'Child' },
+            { entity_id: 8, first_name: '雨', last_name: '小', age_group: 'HighTeen' },
+            { entity_id: 9, first_name: '豆', last_name: '小', age_group: 'Infant' }
+        ],
+        world: {
+            pair: async (a, b) => ({ label: b === '8' ? '姐姐' : '' }),
+            traits: async () => ({ traits: ['Trait_Introvert'] })
+        },
+        llm: { json: async (system, ask) => { asked.push({ system, ask }); return { text: '你画的那张画我还夹在书里。' }; } }
+    };
+    const b = new Booklet(d);
+    const rec = {
+        friends: [{ id: '9', name: '小豆', family: true }, { id: '8', name: '小雨', family: true }, { id: '20', name: '同学', family: false }],
+        chronicle: [{ day: 3, text: '小满给小雨画了一张画' }, { day: 4, text: '小满学会了骑车' }],
+        facts: [], episodes: [], stories: [], thanks: [], traits: { now: ['开朗'], before: [] }
+    };
+    const letters = await b.familyLetters({ id: '7', kind: 'stage', stage: 'Child', next: 'LowTeen' }, { name: '小满' }, rec);
+    assert.deepEqual(letters.map((l) => [l.id, l.relation, l.name]), [['8', '姐姐', '小雨']], 'the baby cannot write, the classmate is not family');
+    assert.equal(letters[0].text, '你画的那张画我还夹在书里。');
+    assert.equal(asked.length, 1);
+    assert.match(asked[0].system, /小满的姐姐/);
+    assert.match(asked[0].system, /高中生/);
+    assert.match(asked[0].ask.split('【TA 这一段的其他事】')[0], /画了一张画/, 'what happened between the two comes first');
+    assert.deepEqual(await b.familyLetters({ id: '7', kind: 'draft', stage: 'Child' }, { name: '小满' }, rec), [], 'a draft has no letters yet');
+});

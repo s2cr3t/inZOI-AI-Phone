@@ -20,6 +20,7 @@ engine runs the file as it is.
 | Piece | What it holds |
 |---|---|
 | 01-core | requests to the game, time, game data, work schedule, DOM helpers |
+| 01-lang | the phone language (Settings > Language): L() and the Chinese / English words |
 | 02-sounds | sounds |
 | 03-home | home screen, pages, dock, swipe home |
 | 04-family | Family, Bonds, Stories, 纪念与信任 |

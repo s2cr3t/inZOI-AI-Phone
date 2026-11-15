@@ -20,7 +20,8 @@ test('together, they can do what an outsider can do side by side', () => {
     const cfg = Daemon.prototype.actionsCfg.call(daemon, pair, { outsiderNear: true });
     assert.ok(cfg.allowed.includes('interact'));
     assert.ok(cfg.allowed.includes('go_to_player'));
-    assert.ok(!cfg.allowed.includes('use_object'));
+    // A small thing where they both are: a colleague turning off the office TV.
+    assert.ok(cfg.allowed.includes('use_object'));
 });
 
 test('household members keep the full set', () => {
@@ -172,4 +173,16 @@ test('no visit while someone else is played, nor when the game was not asked; wi
     const off = forced();
     off.a.visitMode = 'off';
     assert.strictEqual(off.a.visitFar('20548', vpair, {}, site, '白大煐').ok, false);
+});
+
+test('at work on the lot, a small errand the player asked for does not wait for the shift to end', async () => {
+    const { Actions } = require('../lib/actions');
+    const game = { soft: async (name) => (name === 'career_get_work_status' ? { has_job: true, is_at_work: true } : null) };
+    const a = new Actions(game, {}, { info() {}, warn() {} });
+    const recording = { playing: true, interaction_bag_id: 'SoundCompany_InstRecording' };
+    assert.ok(await a.scheduleHold('88556', recording), 'at work: held');
+    a.errands.set('88556', Date.now());
+    assert.equal(await a.scheduleHold('88556', recording), null, 'asked beside them: free for it');
+    // Away in a rabbit hole the errand changes nothing: they are not there to do it.
+    assert.ok(await a.scheduleHold('88556', { playing: true, interaction_bag_id: 'RabbitHole_Company' }));
 });

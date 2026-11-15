@@ -203,11 +203,11 @@
         tile.appendChild(icon);
         var badge = homeBadge(data, app.id);
         if (badge > 0) tile.appendChild(node('div', 'ph-badge', badge > 9 ? '9+' : String(badge)));
-        if (withLabel) tile.appendChild(node('div', 'ph-app-label', app.label));
+        if (withLabel) tile.appendChild(node('div', 'ph-app-label', L(app.label)));
         var id = app.id;
         if (!app.system) {
             var del = tile.appendChild(node('div', 'ph-del', '−'));
-            del.setAttribute('title', 'Remove ' + app.label);
+            del.setAttribute('title', L('Remove “{app}”?', { app: L(app.label) }));
             onTap(del, function (e) {
                 e.stopPropagation();
                 if (homeEditing) homeAskRemove(id);
@@ -277,17 +277,17 @@
         var box = veil.appendChild(node('div', 'hs-alert'));
         var icon = box.appendChild(node('div', 'ph-icon hs-alert-icon ' + app.cls));
         icon.appendChild(appGlyph(id));
-        box.appendChild(node('div', 'hs-alert-title', 'Remove “' + app.label + '”?'));
-        box.appendChild(node('div', 'hs-alert-text', 'It leaves the Home Screen. Get it again from the App Store any time; what it saved stays on the phone.'));
-        var yes = box.appendChild(node('div', 'hs-alert-btn danger', 'Delete App'));
-        var no = box.appendChild(node('div', 'hs-alert-btn', 'Cancel'));
+        box.appendChild(node('div', 'hs-alert-title', L('Remove “{app}”?', { app: L(app.label) })));
+        box.appendChild(node('div', 'hs-alert-text', L('It leaves the Home Screen. Get it again from the App Store any time; what it saved stays on the phone.')));
+        var yes = box.appendChild(node('div', 'hs-alert-btn danger', L('Delete App')));
+        var no = box.appendChild(node('div', 'hs-alert-btn', L('Cancel')));
         onTap(yes, function (e) {
             e.stopPropagation();
             homeAlertClose();
             var a = appRegistry[id];
             if (!a || a.system || !appInstalled(id)) return;
             appRemove(id);
-            setNote(a.label + ' removed. Get it again in the App Store.', false);
+            setNote(L('{app} removed. Get it again in the App Store.', { app: L(a.label) }), false);
             if (!APPS.some(function (x) { return !x.system; })) homeEditStop();
             refresh();
         });
@@ -308,8 +308,8 @@
     function homeTodayPage(data) {
         var env = data.env;
         var today = node('div', 'hs-page hs-today');
-        today.appendChild(joinWithDots(node('div', 'hs-today-date'), [env.day_of_week, env.season]));
-        today.appendChild(node('div', 'hs-today-title', 'Today'));
+        today.appendChild(joinWithDots(node('div', 'hs-today-date'), [L(env.day_of_week), L(env.season)]));
+        today.appendChild(node('div', 'hs-today-title', L('Today')));
         var me = card('NOW PLAYING');
         var info = data.info && !data.info.error ? data.info : { entity_id: data.id };
         var subParts = [info.relationship_label || info.age_group_text, info.job_name];
@@ -326,9 +326,9 @@
         var hero = node('div', 'ph-hero');
         hero.appendChild(node('div', 'ph-greet', greeting(env)));
         hero.appendChild(node('div', 'ph-clock', clockText(env)));
-        hero.appendChild(joinWithDots(node('div', 'ph-date'), [env.day_of_week, env.season]));
+        hero.appendChild(joinWithDots(node('div', 'ph-date'), [L(env.day_of_week), L(env.season)]));
         var weatherParts = [];
-        if (env.weather) weatherParts.push(WEATHER[env.weather] || env.weather);
+        if (env.weather) weatherParts.push(L(WEATHER[env.weather] || env.weather));
         if (typeof env.temperature === 'number') weatherParts.push(env.temperature + ' C');
         if (weatherParts.length) hero.appendChild(node('div', 'ph-weather', weatherParts.join('  ')));
         if (aiSetupState) hero.appendChild(homeSetupBanner(aiSetupState));
@@ -339,8 +339,8 @@
     function homeSetupBanner(state) {
         var stopped = state === 'stopped';
         var b = node('div', 'ph-setup' + (stopped ? ' stopped' : ''));
-        b.appendChild(node('div', 'ph-setup-title', stopped ? 'AI Phone Service is not running' : 'Finish setting up AI Phone'));
-        b.appendChild(node('div', 'ph-setup-sub', stopped ? 'AI 手机服务没有运行，点这里查看怎么启动' : '还差一步：安装 AI 手机服务，点这里查看'));
+        b.appendChild(node('div', 'ph-setup-title', stopped ? L('AI Phone Service is not running') : L('Finish setting up AI Phone')));
+        b.appendChild(node('div', 'ph-setup-sub', stopped ? L('点这里查看怎么启动') : L('还差一步：安装 AI 手机服务，点这里查看')));
         onTap(b, function (e) {
             e.stopPropagation();
             if (homeTapBlocked()) return;
@@ -390,6 +390,8 @@
         if (why) { traceNav('home rebuild: ' + why); return false; }
         // The setup banner changes the hero's height, which the icon pages were cut to.
         if (v.aiSetup !== (data.aiSetup || '')) { traceNav('home rebuild: ai setup ' + (data.aiSetup || 'done')); return false; }
+        // The app names are drawn in the phone's language (01-lang.js).
+        if (v.lang !== phoneLang) { traceNav('home rebuild: language ' + phoneLang); return false; }
         var key = homeTilesKey(data);
         if (v.tilesKey !== key) {
             if (v.tileIds !== homeTileIds() || !homePatchBadges(data)) { traceNav('home rebuild: apps changed'); return false; }
@@ -406,7 +408,7 @@
         var env = data.env;
         homeIcons = {};
         var wrap = node('div', 'hs' + (homeEditing ? ' hs-editing' : ''));
-        var done = wrap.appendChild(node('div', 'hs-done', 'Done'));
+        var done = wrap.appendChild(node('div', 'hs-done', L('Done')));
         onTap(done, function (e) {
             e.stopPropagation();
             homeEditStop();
@@ -443,7 +445,7 @@
 
         homeView = { wrap: wrap, viewport: viewport, track: track, dots: dots, today: today, main: main,
             pages: [today, main], tiles: tiles, w: 0, h: 0, hero: hero, tilesKey: homeTilesKey(data), tileIds: homeTileIds(),
-            aiSetup: data.aiSetup || '' };
+            aiSetup: data.aiSetup || '', lang: phoneLang };
         homeBindGestures(homeView);
         return wrap;
     }
@@ -803,7 +805,7 @@
 
     function swipeAllowed() {
         return current !== 'home' && !playedYoung && !transition && !homeLift &&
-            !dcCurtain && !txCurtain && !flCurtain && !nwCurtain && !oaCurtain &&
+            !dcCurtain && !txCurtain && !mmCurtain && !flCurtain && !nwCurtain && !oaCurtain &&
             !(wf.root && wf.root._minimized) && wf.content.style.display !== 'none';
     }
 

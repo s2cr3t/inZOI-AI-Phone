@@ -49,6 +49,7 @@
             var s = r[0] && typeof r[0] === 'object' ? r[0] : null;
             var d = r[1] && typeof r[1] === 'object' ? r[1] : null;
             aiNoteSetup(s, d);
+            if (d && typeof d.heartbeat === 'number') smsServiceSeen(d.heartbeat);
             if (!d || typeof d.heartbeat !== 'number') return s;
             if (Date.now() - d.heartbeat > AI_STALE_MS) return s;
             if (s && typeof s.heartbeat === 'number' && Date.now() - s.heartbeat <= AI_STALE_MS) return s;
@@ -120,9 +121,9 @@
         aiCopying = true;
         aiCopyResult = null;
         call('clipboard.copy', { text: AI_DOWNLOAD_URL }).then(function () {
-            aiCopyResult = { ok: true, text: 'Link copied. Paste it into your browser. / 已复制，粘贴到浏览器即可。' };
+            aiCopyResult = { ok: true, text: aiBi('Link copied. Paste it into your browser.', '已复制，粘贴到浏览器即可。') };
         }, function () {
-            aiCopyResult = { ok: false, text: 'Could not copy here. Type the address above into your browser. / 复制失败，请在浏览器里输入上面的地址。' };
+            aiCopyResult = { ok: false, text: aiBi('Could not copy here. Type the address above into your browser.', '复制失败，请在浏览器里输入上面的地址。') };
         }).then(function () {
             aiCopying = false;
             aiRerender();
@@ -135,26 +136,27 @@
         return aiSetup.state ? aiSetup.state === 'stopped' : !!(s || aiSetup.seen);
     }
 
-    function aiZh(text) { return node('div', 'ai-detail ai-zh', text); }
+    // The setup cards were written in both languages; the phone's language picks one.
+    function aiBi(en, zh) { return phoneLang === 'zh' ? zh : en; }
 
     // The status card and the download steps for a phone without a running service.
     function aiSetupCards(wrap, stopped) {
         var status = card('AI PHONE SERVICE');
         if (stopped) {
-            status.appendChild(node('div', 'ai-state err', 'Not running'));
-            status.appendChild(node('div', 'ai-detail', 'AI Phone Service is not running on this PC. Open "inZOI AI Phone" from the Windows Start menu to start it. After that it starts by itself whenever you sign in to Windows.'));
-            status.appendChild(aiZh('AI 手机服务没有在运行。请从 Windows 开始菜单打开“inZOI AI 手机”。之后每次登录 Windows 都会自动启动。'));
-            status.appendChild(node('div', 'ai-hint', 'Uninstalled it? Get it again below. / 已经卸载了？在下面重新下载。'));
+            status.appendChild(node('div', 'ai-state err', aiBi('Not running', '没有运行')));
+            status.appendChild(node('div', 'ai-detail', aiBi('AI Phone Service is not running on this PC. Open "inZOI AI Phone" from the Windows Start menu to start it. After that it starts by itself whenever you sign in to Windows.',
+                'AI 手机服务没有在运行。请从 Windows 开始菜单打开“inZOI AI 手机”。之后每次登录 Windows 都会自动启动。')));
+            status.appendChild(node('div', 'ai-hint', aiBi('Uninstalled it? Get it again below.', '已经卸载了？在下面重新下载。')));
         } else {
-            status.appendChild(node('div', 'ai-state warn', 'One more step'));
-            status.appendChild(node('div', 'ai-detail', 'The phone is installed, but AI Phone Service, which writes your family\'s replies, is not on this PC yet. It is one free download.'));
-            status.appendChild(aiZh('手机已经装好，但电脑上还没有负责 AI 回复的 AI 手机服务。免费下载安装一次就好。'));
+            status.appendChild(node('div', 'ai-state warn', aiBi('One more step', '还差一步')));
+            status.appendChild(node('div', 'ai-detail', aiBi('The phone is installed, but AI Phone Service, which writes your family\'s replies, is not on this PC yet. It is one free download.',
+                '手机已经装好，但电脑上还没有负责 AI 回复的 AI 手机服务。免费下载安装一次就好。')));
         }
         wrap.appendChild(status);
 
         var get = card(stopped ? 'DOWNLOAD AGAIN' : 'GET AI PHONE SERVICE');
         var copyRow = node('div', 'ph-btns ai-step-btns');
-        var copy = aiButton(aiCopying ? 'Copying...' : 'Copy link', 'on', !aiCopying, aiCopyLink);
+        var copy = aiButton(aiCopying ? L('Copying...') : L('Copy link'), 'on', !aiCopying, aiCopyLink);
         copy.className += ' last';
         copyRow.appendChild(copy);
         var first = [copyRow, node('div', 'ai-url', AI_DOWNLOAD_URL.replace(/^https:\/\//, ''))];
@@ -167,8 +169,8 @@
         wrap.appendChild(get);
 
         var after = card('THEN');
-        after.appendChild(node('div', 'ai-detail', 'Pick an AI provider such as DeepSeek on this page and add your own API key. AI Phone is free; the provider bills your own account.'));
-        after.appendChild(aiZh('在这一页选择 AI 服务商（如 DeepSeek），填入你自己的 API 密钥。AI 手机本身免费，AI 调用费用由你自己的账号承担。'));
+        after.appendChild(node('div', 'ai-detail', aiBi('Pick an AI provider such as DeepSeek on this page and add your own API key. AI Phone is free; the provider bills your own account.',
+            '在这一页选择 AI 服务商（如 DeepSeek），填入你自己的 API 密钥。AI 手机本身免费，AI 调用费用由你自己的账号承担。')));
         wrap.appendChild(after);
     }
 
@@ -176,8 +178,7 @@
         var row = node('div', 'ai-step');
         row.appendChild(node('div', 'ai-step-n', n));
         var text = node('div', 'ai-step-text');
-        text.appendChild(node('div', 'ai-detail', en));
-        text.appendChild(aiZh(zh));
+        text.appendChild(node('div', 'ai-detail', aiBi(en, zh)));
         (extras || []).forEach(function (x) { text.appendChild(x); });
         row.appendChild(text);
         return row;
@@ -241,7 +242,7 @@
             if (r && r.id === aiPending.id && !r.pending) {
                 var asked = aiPending;
                 aiPending = null;
-                aiResult = { ok: !!r.ok, type: asked.type, text: String(r.message || (r.ok ? 'Done.' : 'That did not work.')) };
+                aiResult = { ok: !!r.ok, type: asked.type, text: String(r.message || (r.ok ? L('Done.') : L('That did not work.'))) };
                 if (asked.type === 'models' && r.ok && Array.isArray(r.models)) aiModels[asked.provider] = r.models.slice(0, 300);
                 if ((asked.type === 'paste_key' || asked.type === 'set_key') && r.ok && r.saved && aiDraft && aiDraft.provider === asked.provider && aiDiffers()) {
                     // The key is for the provider picked here: start using that provider now.
@@ -249,7 +250,7 @@
                 }
             } else if (Date.now() - aiPending.at > AI_REQUEST_MS) {
                 aiPending = null;
-                aiResult = { ok: false, text: 'No answer from AI Phone Service. Check that it is running on this PC.' };
+                aiResult = { ok: false, text: L('No answer from AI Phone Service. Check that it is running on this PC.') };
             }
         }
         if (aiSaving) {
@@ -260,11 +261,11 @@
                     aiResult = { ok: false, text: String(s.controlError) };
                 } else {
                     aiDraft = null;
-                    if (!quiet) aiResult = { ok: true, text: 'Saved.' };
+                    if (!quiet) aiResult = { ok: true, text: L('Saved.') };
                 }
             } else if (Date.now() - aiSaving.at > AI_SAVE_MS) {
                 aiSaving = null;
-                aiResult = { ok: false, text: 'AI Phone Service did not pick up the change. Check that it is running on this PC.' };
+                aiResult = { ok: false, text: L('AI Phone Service did not pick up the change. Check that it is running on this PC.') };
             }
         }
     }
@@ -303,15 +304,15 @@
         var model = d.model.trim();
         var url = d.base_url.trim();
         if (!p) {
-            aiResult = { ok: false, text: 'Pick a provider.' };
+            aiResult = { ok: false, text: L('Pick a provider.') };
             return aiRerender();
         }
         if (!AI_MODEL_RE.test(model)) {
-            aiResult = { ok: false, text: model ? 'That model name has characters a model name cannot have.' : 'Enter or pick a model.' };
+            aiResult = { ok: false, text: model ? L('That model name has characters a model name cannot have.') : L('Enter or pick a model.') };
             return aiRerender();
         }
         if (p.custom && !/^https?:\/\/\S+$/i.test(url)) {
-            aiResult = { ok: false, text: 'Enter the address of the server, starting with https://' };
+            aiResult = { ok: false, text: L('Enter the address of the server, starting with https://') };
             return aiRerender();
         }
         var rev = Date.now();
@@ -330,7 +331,7 @@
             refresh();
         }, function (err) {
             aiSaving = null;
-            aiResult = { ok: false, text: 'Could not save: ' + errText(err) };
+            aiResult = { ok: false, text: L('Could not save: {why}', { why: errText(err) }) };
             aiRerender();
         });
         aiRerender();
@@ -350,7 +351,7 @@
             refresh();
         }, function (err) {
             aiSaving = null;
-            aiResult = { ok: false, text: 'Could not switch: ' + errText(err) };
+            aiResult = { ok: false, text: L('Could not switch: {why}', { why: errText(err) }) };
             aiRerender();
         });
         aiRerender();
@@ -359,12 +360,12 @@
     function aiRequest(type, key) {
         if (!aiAlive(aiService) || aiPending) return;
         if (!aiTakesRequests(aiService)) {
-            aiResult = { ok: false, text: AI_NO_GUARDIAN };
+            aiResult = { ok: false, text: L(AI_NO_GUARDIAN) };
             return aiRerender();
         }
         // One request at a time goes to the service; request.cfg has room for only one.
         if (wallPending || smsPhotoPending) {
-            aiResult = { ok: false, text: wallPending ? 'Finish choosing the wallpaper picture on the PC first.' : 'Finish choosing the Texts photo on the PC first.' };
+            aiResult = { ok: false, text: wallPending ? L('Finish choosing the wallpaper picture on the PC first.') : L('Finish choosing the Texts photo on the PC first.') };
             return aiRerender();
         }
         var d = aiDraft || aiSynced();
@@ -381,7 +382,7 @@
             refresh();
         }, function (err) {
             aiPending = null;
-            aiResult = { ok: false, text: 'Could not send: ' + errText(err) };
+            aiResult = { ok: false, text: L('Could not send: {why}', { why: errText(err) }) };
             aiRerender();
         });
         aiRerender();
@@ -393,7 +394,7 @@
         aiKeyDraft = '';
         if (f) f.value = '';
         if (!key) {
-            aiResult = { ok: false, text: 'Type or paste the key first.' };
+            aiResult = { ok: false, text: L('Type or paste the key first.') };
             return aiRerender();
         }
         aiRequest('set_key', key);
@@ -419,15 +420,15 @@
     function aiStateView(s) {
         var st = s.state;
         if (st === 'running') {
-            if (s.ai && s.ai.ok === false) return { cls: 'err', text: 'Running, last reply failed', detail: s.ai.message || '' };
-            return { cls: 'on', text: 'Running', detail: 'Texts and Moments are answered by ' + ((aiProvider(s.provider) || {}).label || s.provider) + ' ' + s.model + '.' };
+            if (s.ai && s.ai.ok === false) return { cls: 'err', text: L('Running, last reply failed'), detail: s.ai.message || '' };
+            return { cls: 'on', text: L('Running'), detail: L('Texts and Moments are answered by {who}.', { who: ((aiProvider(s.provider) || {}).label || s.provider) + ' ' + s.model }) };
         }
-        if (st === 'starting') return { cls: 'on', text: 'Starting...', detail: '' };
-        if (st === 'needs_key') return { cls: 'warn', text: 'Needs an API key', detail: s.error || '' };
-        if (st === 'disabled') return { cls: 'off', text: 'Off', detail: 'Characters do not answer texts while AI is off.' };
-        if (st === 'waiting_game') return { cls: 'err', text: 'Cannot reach the game', detail: s.error || '' };
-        if (st === 'stopped') return { cls: 'off', text: 'Stopped', detail: s.error || '' };
-        return { cls: 'err', text: 'Problem', detail: s.error || '' };
+        if (st === 'starting') return { cls: 'on', text: L('Starting...'), detail: '' };
+        if (st === 'needs_key') return { cls: 'warn', text: L('Needs an API key'), detail: s.error || '' };
+        if (st === 'disabled') return { cls: 'off', text: L('Off'), detail: L('Characters do not answer texts while AI is off.') };
+        if (st === 'waiting_game') return { cls: 'err', text: L('Cannot reach the game'), detail: s.error || '' };
+        if (st === 'stopped') return { cls: 'off', text: L('Stopped'), detail: s.error || '' };
+        return { cls: 'err', text: L('Problem'), detail: s.error || '' };
     }
 
     function aiRenderKey(data) {
@@ -514,9 +515,9 @@
         var mine = !aiSaving && type === 'diagnose';
         var text = '';
         if (mine === !!diagnose) {
-            text = aiSaving ? 'Saving...' : aiPending ? (aiPending.type === 'paste_key' || aiPending.type === 'set_key' ? 'Checking the key with the provider...'
-                : aiPending.type === 'models' ? 'Asking the provider for its models...' : aiPending.type === 'test' ? 'Testing the connection...'
-                    : aiPending.type === 'diagnose' ? 'Collecting logs and settings...' : 'Working...') : aiResult ? aiResult.text : '';
+            text = aiSaving ? L('Saving...') : aiPending ? (aiPending.type === 'paste_key' || aiPending.type === 'set_key' ? L('Checking the key with the provider...')
+                : aiPending.type === 'models' ? L('Asking the provider for its models...') : aiPending.type === 'test' ? L('Testing the connection...')
+                    : aiPending.type === 'diagnose' ? L('Collecting logs and settings...') : L('Working...')) : aiResult ? aiResult.text : '';
         }
         var cls = aiSaving || aiPending || !text ? 'ai-result' : aiResult ? (aiResult.ok ? 'ai-result ok' : 'ai-result err') : 'ai-result';
         var line = node('div', cls, text);
@@ -564,22 +565,22 @@
         var c = card('USAGE');
         var hour = u.hour || {};
         var today = u.today || {};
-        var head = String(hour.calls || 0) + (u.limit ? ' of ' + u.limit : '') + ' AI calls';
+        var head = u.limit ? L('{n} of {limit} AI calls', { n: hour.calls || 0, limit: u.limit }) : L('{n} AI calls', { n: hour.calls || 0 });
         c.appendChild(node('div', 'ai-usage-big', head));
-        c.appendChild(node('div', 'ai-detail', 'in the last 60 minutes' + (u.priced ? ', about ' + aiMoney(hour.cost, u.currency) : '')));
-        if (hour.failed) c.appendChild(node('div', 'ai-detail st-warn', hour.failed + ' of them failed. Failed calls are not billed.'));
+        c.appendChild(node('div', 'ai-detail', u.priced ? L('in the last 60 minutes, about {cost}', { cost: aiMoney(hour.cost, u.currency) }) : L('in the last 60 minutes')));
+        if (hour.failed) c.appendChild(node('div', 'ai-detail st-warn', L('{n} of them failed. Failed calls are not billed.', { n: hour.failed })));
         if (u.limit && hour.calls >= u.limit * 0.8) {
             c.appendChild(node('div', 'ai-detail st-warn', hour.calls >= u.limit
-                ? 'The hourly cap is reached. Characters wait before they answer again.'
-                : 'Close to the hourly cap. When it is reached, characters wait before they answer again.'));
+                ? L('The hourly cap is reached. Characters wait before they answer again.')
+                : L('Close to the hourly cap. When it is reached, characters wait before they answer again.')));
         }
-        c.appendChild(node('div', 'ai-line', 'Today: ' + (today.calls || 0) + ' calls' + (u.priced ? ', about ' + aiMoney(today.cost, u.currency) : '')));
+        c.appendChild(node('div', 'ai-line', u.priced ? L('Today: {n} calls, about {cost}', { n: today.calls || 0, cost: aiMoney(today.cost, u.currency) }) : L('Today: {n} calls', { n: today.calls || 0 })));
         var purposes = Array.isArray(u.purposes) ? u.purposes : [];
         if (purposes.length) {
             var list = node('div', 'ai-usage-list');
             purposes.slice(0, AI_USAGE_TOP).forEach(function (p) {
                 var row = node('div', 'ai-usage-row');
-                row.appendChild(node('span', 'ai-usage-name', AI_PURPOSES[p.id] || p.id));
+                row.appendChild(node('span', 'ai-usage-name', L(AI_PURPOSES[p.id] || p.id)));
                 row.appendChild(node('span', 'ai-usage-count', String(p.calls) + (u.priced && p.cost ? ' \u00b7 ' + aiMoney(p.cost, u.currency) : '')));
                 list.appendChild(row);
             });
@@ -587,23 +588,24 @@
                 var rest = 0;
                 purposes.slice(AI_USAGE_TOP).forEach(function (p) { rest += p.calls; });
                 var more = node('div', 'ai-usage-row');
-                more.appendChild(node('span', 'ai-usage-name', 'Everything else'));
+                more.appendChild(node('span', 'ai-usage-name', L('Everything else')));
                 more.appendChild(node('span', 'ai-usage-count', String(rest)));
                 list.appendChild(more);
             }
             c.appendChild(list);
         }
-        c.appendChild(node('div', 'ai-hint', 'Tokens in the last 60 minutes: ' + aiTokens(hour.prompt) + ' sent (' + aiTokens(hour.cached) + ' from cache), ' + aiTokens(hour.completion) + ' received.'));
+        c.appendChild(node('div', 'ai-hint', L('Tokens in the last 60 minutes: {sent} sent ({cached} from cache), {got} received.', { sent: aiTokens(hour.prompt), cached: aiTokens(hour.cached), got: aiTokens(hour.completion) })));
         var note;
         if (!u.priced) {
-            note = 'No price is known for this model, so only calls and tokens are shown. To see a cost, add "price" under "llm" in config.json, for example "price": {"input": 2, "cached": 0.5, "output": 8, "currency": "CNY"} (per million tokens).';
+            note = L('No price is known for this model, so only calls and tokens are shown. To see a cost, add "price" under "llm" in config.json, for example "price": {"input": 2, "cached": 0.5, "output": 8, "currency": "CNY"} (per million tokens).');
         } else if (u.priceSource === 'config') {
-            note = 'Cost uses the prices set in config.json. It is an estimate; the bill on the provider\'s website is the real figure.';
+            note = L('Cost uses the prices set in config.json. It is an estimate; the bill on the provider’s website is the real figure.');
         } else {
-            note = 'Cost uses DeepSeek\'s published prices' + (u.peak === true ? ', peak hours now (full price)' : u.peak === false ? ', off-peak now (half price)' : '') +
-                '. It is an estimate; the bill on the provider\'s website is the real figure.';
+            note = u.peak === true ? L('Cost uses DeepSeek’s published prices, peak hours now (full price). It is an estimate; the bill on the provider’s website is the real figure.')
+                : u.peak === false ? L('Cost uses DeepSeek’s published prices, off-peak now (half price). It is an estimate; the bill on the provider’s website is the real figure.')
+                : L('Cost uses DeepSeek’s published prices. It is an estimate; the bill on the provider’s website is the real figure.');
         }
-        if (u.priced && hour.unpriced) note += ' ' + hour.unpriced + ' call(s) came back without token counts and are not in the cost.';
+        if (u.priced && hour.unpriced) note += ' ' + L('{n} call(s) came back without token counts and are not in the cost.', { n: hour.unpriced });
         c.appendChild(node('div', 'ai-hint', note));
         return c;
     }
@@ -612,12 +614,12 @@
         var c = card('SUPPORT');
         var btns = node('div', 'ph-btns');
         btns.style.marginTop = '0';
-        var b = aiButton('Export diagnostics', '', !aiPending, function () { aiRequest('diagnose'); });
+        var b = aiButton(L('Export diagnostics'), '', !aiPending, function () { aiRequest('diagnose'); });
         b.className += ' last';
         btns.appendChild(b);
         c.appendChild(btns);
         c.appendChild(aiResultLine(true));
-        c.appendChild(node('div', 'ai-hint', 'Saves the recent logs and settings as one zip file in Documents\\inZOI\\AI Phone Diagnostics. API keys are removed from it. The chat messages stay in, so the problem can be traced. Send the zip together with what happened and roughly when.'));
+        c.appendChild(node('div', 'ai-hint', L('Saves the recent logs and settings as one zip file in Documents\\inZOI\\AI Phone Diagnostics. API keys are removed from it. The chat messages stay in, so the problem can be traced. Send the zip together with what happened and roughly when.')));
         return c;
     }
 
@@ -640,8 +642,8 @@
         if (view.detail) status.appendChild(node('div', 'ai-detail', view.detail));
         var onOff = node('div', 'ph-btns');
         var enabled = s.enabled !== false;
-        onOff.appendChild(aiButton('On', enabled ? 'on' : '', !aiSaving, function () { aiSwitch(true); }));
-        var off = aiButton('Off', enabled ? '' : 'on', !aiSaving, function () { aiSwitch(false); });
+        onOff.appendChild(aiButton(L('On'), enabled ? 'on' : '', !aiSaving, function () { aiSwitch(true); }));
+        var off = aiButton(L('Off'), enabled ? '' : 'on', !aiSaving, function () { aiSwitch(false); });
         off.className += ' last';
         onOff.appendChild(off);
         status.appendChild(onOff);
@@ -652,22 +654,22 @@
         var providerCard = card('PROVIDER');
         var pchips = node('div', 'ph-chips');
         aiProviders().forEach(function (item) {
-            pchips.appendChild(aiChip(item.label, item.id === d.provider, function () { aiPickProvider(item.id); }, aiKeyOf(item.id).set));
+            pchips.appendChild(aiChip(L(item.label), item.id === d.provider, function () { aiPickProvider(item.id); }, aiKeyOf(item.id).set));
         });
         providerCard.appendChild(pchips);
-        providerCard.appendChild(node('div', 'ai-hint', 'A green dot means a key is saved for that provider.'));
+        providerCard.appendChild(node('div', 'ai-hint', L('A green dot means a key is saved for that provider.')));
         wrap.appendChild(providerCard);
         if (!p) return wrap;
 
         var key = aiKeyOf(p.id);
         var keyCard = card('API KEY');
-        keyCard.appendChild(node('div', 'ai-line', key.set ? 'Saved: ' + (key.hint || 'yes') : 'No key saved for ' + p.label + '.'));
+        keyCard.appendChild(node('div', 'ai-line', key.set ? L('Saved: {hint}', { hint: key.hint || L('yes') }) : L('No key saved for {who}.', { who: p.label })));
         var keyBtns = node('div', 'ph-btns');
-        var paste = aiButton('Paste key', 'on', !aiPending, function () { aiRequest('paste_key'); });
+        var paste = aiButton(L('Paste key'), 'on', !aiPending, function () { aiRequest('paste_key'); });
         keyBtns.appendChild(paste);
         if (key.set) {
             var asking = aiConfirmForget === p.id;
-            var forget = aiButton(asking ? 'Tap to confirm' : 'Remove key', asking ? 'warn' : '', !aiPending, function () {
+            var forget = aiButton(asking ? L('Tap to confirm') : L('Remove key'), asking ? 'warn' : '', !aiPending, function () {
                 if (aiConfirmForget === p.id) {
                     aiConfirmForget = '';
                     aiRequest('forget_key');
@@ -683,8 +685,8 @@
         }
         keyCard.appendChild(keyBtns);
         var typeRow = node('div', 'ai-row');
-        typeRow.appendChild(aiInput('ai-key', 'password', aiKeyDraft, 'Or type the key here', AI_KEY_MAX, function (v) { aiKeyDraft = v; }, aiSubmitKey));
-        var saveKey = node('button', 'mo-btn' + (aiPending ? ' mo-btn-off' : ''), 'Save');
+        typeRow.appendChild(aiInput('ai-key', 'password', aiKeyDraft, L('Or type the key here'), AI_KEY_MAX, function (v) { aiKeyDraft = v; }, aiSubmitKey));
+        var saveKey = node('button', 'mo-btn' + (aiPending ? ' mo-btn-off' : ''), L('Save'));
         saveKey.setAttribute('type', 'button');
         onTap(saveKey, function (e) {
             e.stopPropagation();
@@ -692,8 +694,8 @@
         });
         typeRow.appendChild(saveKey);
         keyCard.appendChild(typeRow);
-        keyCard.appendChild(node('div', 'ai-hint', (p.key_site ? 'Create a key at ' + p.key_site + ' and copy it. ' : '') +
-            'Paste key reads the key from the Windows clipboard. It is checked with the provider, then stored encrypted on this PC and never shown again.'));
+        keyCard.appendChild(node('div', 'ai-hint', (p.key_site ? L('Create a key at {site} and copy it. ', { site: p.key_site }) : '') +
+            L('Paste key reads the key from the Windows clipboard. It is checked with the provider, then stored encrypted on this PC and never shown again.')));
         wrap.appendChild(keyCard);
 
         if (p.custom) {
@@ -704,7 +706,7 @@
                 aiSync();
             }));
             urlCard.appendChild(urlRow);
-            urlCard.appendChild(node('div', 'ai-hint', 'Any server that speaks the OpenAI chat completions protocol. http:// is allowed only for a server on this PC.'));
+            urlCard.appendChild(node('div', 'ai-hint', L('Any server that speaks the OpenAI chat completions protocol. http:// is allowed only for a server on this PC.')));
             wrap.appendChild(urlCard);
         }
 
@@ -728,16 +730,16 @@
             });
             modelCard.appendChild(mchips);
             if (listed.length > AI_MODEL_CHIPS) {
-                modelCard.appendChild(node('div', 'ai-hint', 'Showing ' + AI_MODEL_CHIPS + ' of ' + listed.length + ' models. Type any other name below.'));
+                modelCard.appendChild(node('div', 'ai-hint', L('Showing {n} of {all} models. Type any other name below.', { n: AI_MODEL_CHIPS, all: listed.length })));
             }
         }
         var modelRow = node('div', 'ai-row');
-        modelRow.appendChild(aiInput('ai-model', 'text', d.model, 'Model name', 128, function (v) {
+        modelRow.appendChild(aiInput('ai-model', 'text', d.model, L('Model name'), 128, function (v) {
             d.model = v;
             aiSync();
         }));
         var canList = !aiPending && (key.set || (p.custom && aiLocalUrl(d.base_url)));
-        var fetchBtn = node('button', 'mo-btn mo-btn-plain' + (canList ? '' : ' mo-btn-off'), 'Fetch list');
+        var fetchBtn = node('button', 'mo-btn mo-btn-plain' + (canList ? '' : ' mo-btn-off'), L('Fetch list'));
         fetchBtn.setAttribute('type', 'button');
         onTap(fetchBtn, function (e) {
             e.stopPropagation();
@@ -745,35 +747,35 @@
         });
         modelRow.appendChild(fetchBtn);
         modelCard.appendChild(modelRow);
-        modelCard.appendChild(node('div', 'ai-hint', 'Fetch list asks the provider which models your key can use.'));
+        modelCard.appendChild(node('div', 'ai-hint', L('Fetch list asks the provider which models your key can use.')));
         wrap.appendChild(modelCard);
 
         var thinkCard = card('DEEP THINKING');
         var tchips = node('div', 'ph-chips');
         AI_THINKING.forEach(function (t) {
-            tchips.appendChild(aiChip(t.label, d.thinking === t.id, function () {
+            tchips.appendChild(aiChip(L(t.label), d.thinking === t.id, function () {
                 d.thinking = t.id;
                 aiRerender();
             }));
         });
         thinkCard.appendChild(tchips);
-        thinkCard.appendChild(node('div', 'ai-hint', 'Off answers fastest and costs least. Higher levels think longer before each reply and use more of your credit. Models that cannot switch it off use the lowest level they allow.'));
+        thinkCard.appendChild(node('div', 'ai-hint', L('Off answers fastest and costs least. Higher levels think longer before each reply and use more of your credit. Models that cannot switch it off use the lowest level they allow.')));
         wrap.appendChild(thinkCard);
 
         var actions = card();
         var actionBtns = node('div', 'ph-btns');
         actionBtns.style.marginTop = '0';
-        var save = aiButton('Save', 'on', true, function () {
+        var save = aiButton(L('Save'), 'on', true, function () {
             if (aiDiffers() && !aiSaving) aiSaveControl(false);
         });
         save.id = 'ai-save';
         actionBtns.appendChild(save);
-        var test = aiButton('Test connection', '', !aiPending, function () { aiRequest('test'); });
+        var test = aiButton(L('Test connection'), '', !aiPending, function () { aiRequest('test'); });
         test.className += ' last';
         actionBtns.appendChild(test);
         actions.appendChild(actionBtns);
         actions.appendChild(aiResultLine());
-        actions.appendChild(node('div', 'ai-version', 'AI Phone Service ' + (s.version || '') + (s.installed ? '' : ' (development copy)')));
+        actions.appendChild(node('div', 'ai-version', L('AI Phone Service') + ' ' + (s.version || '') + (s.installed ? '' : L(' (development copy)'))));
         wrap.appendChild(actions);
         wrap.appendChild(aiSupportCard());
         setTimeout(aiSync, 0);
