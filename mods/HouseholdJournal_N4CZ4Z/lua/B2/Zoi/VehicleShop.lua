@@ -21,6 +21,7 @@
 -- error_<text>. Every payment also prints a VPAY line: call ok, its answer, money before/after.
 
 ---@class VehicleShop
+local Once = require("HJOnce")
 local M = {}
 
 local TAG = "[HouseholdJournal] "
@@ -207,6 +208,7 @@ end
 ---@param owner FB2Character
 function M.on_lua_message(self, owner, ...)
     local args = { ... }
+    if Once.repeated("VehicleShop", owner, args) then return end
     for i = 1, #args do
         if args[i] == MESSAGE then
             local content = tostring(args[i + 1] or "")

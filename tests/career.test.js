@@ -284,6 +284,27 @@ test('a resignation goes through the Lua mod and is checked on the job', async (
     assert.equal(fs.readFileSync(path.join(s.mod, 'bridge', 'career.cfg'), 'utf8'), '');
 });
 
+test('a request nobody answered (sent while a save loaded) goes again once; an answer to either number counts', async (t) => {
+    const s = setup(t, world());
+    const got = [];
+    s.career.request('20522', 'x', '885/61976', (res) => got.push(res));
+    s.career.request('20522', 'p', '6', () => {});
+    const queue = () => fs.readFileSync(path.join(s.mod, 'bridge', 'career.cfg'), 'utf8');
+    const first = /^(\d+):20522:x:885\/61976/.exec(queue())[1];
+    for (const p of s.career.pending) p.at -= 31000;
+    s.career.expire();
+    const again = /(\d+):20522:x:885\/61976/.exec(queue())[1];
+    assert.notEqual(again, first, 'under a new number');
+    assert.ok(/:p:6/.test(queue()), 'one not safe to repeat is left as it was');
+    assert.equal(s.career.pending.find((p) => p.op === 'p').seqs, undefined);
+    s.career.expire();
+    assert.equal(/(\d+):20522:x:885\/61976/.exec(queue())[1], again, 'only once');
+    await s.career.onResult({ seq: first, ok: true, actor: '20522', op: 'x', detail: 'dismissed' });
+    await s.career.onResult({ seq: again, ok: false, actor: '20522', op: 'x', detail: 'refused' });
+    assert.equal(got.length, 1);
+    assert.ok(got[0].ok);
+});
+
 test('remote work is approved in words only, and later or unknown answers file nothing', async (t) => {
     const s = setup(t, world());
     const r = s.request({ kind: 'remote' });

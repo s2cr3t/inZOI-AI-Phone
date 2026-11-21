@@ -27,12 +27,15 @@
 --     someone who was parked before, back to TimelineSimulateOnly; detail released_<simulated now>
 --   "HouseholdJournal.career", content "<seq>:s:<character>"   how the game runs them, nothing
 --     changed; detail sim_<simulated>_force_<forced>_state_<EntityState>_<city>
+--   "HouseholdJournal.career", content "<seq>:w:<company entity>"   wake a newly hired
+--     resident-family character into the simulation used by the game's work schedule.
 -- Result, printed to the Lua log the bridge tails:
 --   [HouseholdJournal] C <boot>,<seq>,<ok|fail>,<actor>,<op>,<detail>
 --   detail: left_<reason> | refused_<reason> | no_manager | error_...
 -- The bridge checks the character's job afterwards; "ok" only says the game took the request.
 
 ---@class CareerServer
+local Once = require("HJOnce")
 local M = {}
 
 local TAG = "[HouseholdJournal] "
@@ -226,21 +229,59 @@ local function leave(actor, seq, company)
     result(seq, true, actor, "r", "left_" .. name)
 end
 
+-- The boss lets someone go: asked of the played character (op x, arg <company>/<employee>), since
+-- an employee the game does not simulate never answers a request sent to them. The career
+-- manager takes the leave by entity, whoever asks.
+local function dismiss(actor, seq, arg)
+    local company, target = tostring(arg or ""):match("^(%d+)/(%d+)$")
+    if not company then return result(seq, false, actor, "x", "bad_arg") end
+    local okM, mgr = pcall(function() return inzoi.getB2Manager("FB2CareerManager") end)
+    if not okM or not mgr then return result(seq, false, actor, "x", "no_manager") end
+    local reason, name = leaveReason()
+    local ok, done = pcall(function() return mgr:RequestLeaveCareerByEntity(entityKey(target), entityKey(company), reason) end)
+    if not ok then return result(seq, false, actor, "x", "error_" .. short(done)) end
+    if done == false then return result(seq, false, actor, "x", "refused_" .. name) end
+    result(seq, true, actor, "x", "dismissed_" .. target .. "_" .. name)
+end
+
+-- career_join registers a resident-family NPC in the company, but some of those characters remain
+-- outside the active simulation. The native work schedule cannot count or move them until they are
+-- simulated once. Keep this one-shot activation separate from the bridge's task steering.
+local function prepareWork(owner, actor, seq, company)
+    local S = inzoi.EB2EntityState
+    local R = inzoi.EB2EntityStateChangeReason
+    local before = simText(owner)
+    local forced = pcall(function() owner:SetForceSimulationLevelOfDetailZero(true) end)
+    local parked = false
+    pcall(function() parked = owner:HasEntityState(S.TimelineSimulateOnly) end)
+    if parked then
+        pcall(function() owner:RemoveEntityState(S.TimelineSimulateOnly, R.NpcTimeline) end)
+        pcall(function() owner:AddEntityState(S.GameSpawned, R.SpawnVisitor) end)
+    end
+    if simText(owner) ~= "true" then
+        pcall(function() owner:AddEntityState(S.Simulate, R.SpawnVisitor) end)
+    end
+    result(seq, forced, actor, "w", "company_" .. token(company) .. "_before_" .. before .. "_after_" .. simText(owner))
+end
+
 ---@param self table
 ---@param owner FB2Character
 function M.on_lua_message(self, owner, ...)
     local args = { ... }
+    if Once.repeated("CareerServer", owner, args) then return end
     for i = 1, #args do
         if args[i] == MESSAGE then
             local content = tostring(args[i + 1] or "")
             local okT, rawActor = pcall(function() return owner:GetEntityId() end)
             local actor = okT and idText(rawActor) or ""
             local seq, op, arg = content:match("^(%d+):(%a):([%w_/]+)$")
-            if not seq or not ("rqavesp"):find(op, 1, true) then return result(seq or "", false, actor, op or "", "bad_request") end
+            if not seq or not ("rqavespwx"):find(op, 1, true) then return result(seq or "", false, actor, op or "", "bad_request") end
             local ok, err
             if op == "q" then ok, err = pcall(addMission, owner, actor, seq, arg)
             elseif op == "p" then ok, err = pcall(addPoints, owner, actor, seq, arg)
             elseif op == "a" then ok, err = pcall(appointment, owner, actor, seq, arg)
+            elseif op == "w" then ok, err = pcall(prepareWork, owner, actor, seq, arg)
+            elseif op == "x" then ok, err = pcall(dismiss, actor, seq, arg)
             elseif op == "v" or op == "e" or op == "s" then ok, err = pcall(visit, actor, seq, op, arg)
             else ok, err = pcall(leave, actor, seq, arg) end
             if not ok then result(seq, false, actor, op, "error_" .. short(err)) end

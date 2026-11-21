@@ -90,6 +90,7 @@ test('morning and afternoon apart: each slot its own work, and the game hands ou
     const entry = (ms) => ({ startTime: 0, questTask: [{ missionDtId: ms }] });
     const row = { questList: [entry('M_A'), entry('M_B'), entry('M_C')], randomSelectMin: 1, randomSelectMax: 2 };
     let executing = { m_C: { questInfo: { questId: 'Co_Quest_Working', questTask: { missionDtId: 'M_C' } } } };
+    let history = {};
     const d = {
         log: { info() {}, warn() {} },
         world: { possessed: async () => '1', characterInfo: async () => ({ last_name: '李', first_name: 'n' }) },
@@ -100,7 +101,7 @@ test('morning and afternoon apart: each slot its own work, and the game hands ou
             if (n === 'interaction_execute') set.push(a.interaction_bag_id);
             if (n === 'data_table_get' && a.Alias === 'Quest') return JSON.parse(JSON.stringify(row));
             if (n === 'data_table_get' && a.Alias === 'Mission') return { conditions: [{ conditionType: 'InteractionBagCount', conditionId1: 'Co_' + a.Row.slice(2) }] };
-            if (n === 'entity_reflect') return { executingQuestMap: executing };
+            if (n === 'entity_reflect') return { executingQuestMap: executing, todayQuestHistoryData: history };
             if (n === 'data_patch') {
                 const field = a.Query.split('.').pop();
                 const v = JSON.parse(a.Value);
@@ -125,9 +126,12 @@ test('morning and afternoon apart: each slot its own work, and the game hands ou
     await w.drive(c, { day: 3, hour: 10, minute: 0 });
     assert.equal(w.view(c).people['9'].slots[0].quest, 'set');
     // Lunch: the afternoon's, both of them.
+    // Lunch: the afternoon's, less M_A, handed out this morning (the game hands each out once a day).
+    executing = {};
+    history = { co_Quest: { historyElementMap: { m_A: {} } } };
     await w.drive(c, { day: 3, hour: 12, minute: 30 });
-    assert.equal(ids(), 'M_A/M_B');
-    assert.equal(row.randomSelectMin, 2);
+    assert.equal(ids(), 'M_B');
+    assert.equal(row.randomSelectMin, 1);
     w.steeredAt.clear();
     await w.drive(c, { day: 3, hour: 14, minute: 30 });
     assert.ok(set.indexOf('Co_A') >= 0 && set.indexOf('Co_B') >= 0, 'each slot its own work');
@@ -170,5 +174,12 @@ test('a harder task asks for more skill and, finished, adds more to the project'
     assert.equal(v.bonus, TIERS[2].bonus);
     assert.equal(v.slots[0].tasks[0].done, 1);
     fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('morale changes the project bonus without removing the task entirely', () => {
+    const { stateEfficiency } = require('../lib/workplan');
+    assert.equal(Math.round(10 * stateEfficiency({ morale: 100 })), 12);
+    assert.equal(Math.round(10 * stateEfficiency({ morale: 60 })), 10);
+    assert.equal(Math.round(10 * stateEfficiency({ morale: 0 })), 7);
 });
 

@@ -23,7 +23,8 @@
             oaPay: { load: loadOa, render: renderOaPay, title: '薪酬职级', parent: 'oa' },
             oaManage: { load: loadOa, render: renderOaManage, title: '管理台', parent: 'oa' },
             oaStaff: { load: loadOa, render: renderOaStaff, title: '员工详情', parent: 'oaManage' },
-            oaCand: { load: loadOa, render: renderOaCand, title: '简历', parent: 'oaManage' }
+            oaCand: { load: loadOa, render: renderOaCand, title: '简历', parent: 'oaManage' },
+            oaFinance: { load: loadOa, render: renderOaFinance, title: '公司资金', parent: 'oaManage' }
         } });
     registerApp({ id: 'school', label: '成绩', cls: 'ic-school', glyph: schoolGlyph, category: 'Education', version: '1.0',
         desc: '成绩单、课表和老师评语', subtitle: '成绩单、课表和老师评语',

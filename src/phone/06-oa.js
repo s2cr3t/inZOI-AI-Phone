@@ -294,6 +294,7 @@
     var oaProjectRows = {};
     var OA_PACE = {
         done: { text: '已完成', cls: 'pill-work', color: '#30D158' },
+        passed: { text: '已达标', cls: 'pill-work', color: '#30D158' },
         ahead: { text: '进度领先', cls: 'pill-work', color: '#30D158' },
         ok: { text: '进度正常', cls: 'oa-pill-info', color: '#0A84FF' },
         behind: { text: '进度落后', cls: 'pill-move', color: '#FF9F0A' },
@@ -356,20 +357,24 @@
         return sum;
     }
 
-    // { pct, timePct, pace } as lib/teamproject.js standing().
-    function oaStanding(p, env) {
+    // { pct, timePct, pace, pass } as lib/teamproject.js standing(). pass: the points that make the
+    // project done for the company the player runs (its pace is against them), else 0 (the game's
+    // own rule: all the points).
+    function oaStanding(p, env, pass) {
         var now = oaEnvMin(env);
         var pct = p.total ? Math.min(1, p.current / p.total) : 0;
+        var goal = pass ? Math.min(1, p.current / pass) : pct;
         var all = oaWorkMin(p.startMin, p.deadlineMin, p.open, p.close);
         var spent = now === null ? 0 : oaWorkMin(p.startMin, Math.min(now, p.deadlineMin), p.open, p.close);
         var timePct = all ? spent / all : 0;
         var pace = 'ok';
         if (pct >= 1) pace = 'done';
+        else if (pass && p.current >= pass) pace = 'passed';
         else if (now !== null && now >= p.deadlineMin) pace = 'late';
         else if (timePct < 0.05) pace = 'ok';
-        else if (pct >= timePct + 0.1) pace = 'ahead';
-        else if (pct < timePct - 0.15) pace = 'behind';
-        return { pct: pct, timePct: timePct, pace: pace };
+        else if (goal >= timePct + 0.1) pace = 'ahead';
+        else if (goal < timePct - 0.15) pace = 'behind';
+        return { pct: pct, timePct: timePct, pace: pace, pass: pass || 0 };
     }
 
     function oaDeadlineText(p, env) {
@@ -408,7 +413,8 @@
     function oaProjectCard(data, desk, full) {
         var p = desk.project;
         if (!p) return null;
-        var s = oaStanding(p, data.env);
+        var run = oaRun(desk);
+        var s = oaStanding(p, data.env, run && run.project && run.project.id === p.id ? run.project.pass : 0);
         var pace = OA_PACE[s.pace];
         var c = card(full ? '当前项目' : '团队项目');
         var head = c.appendChild(node('div', 'ph-row oa-pj-head'));
@@ -426,8 +432,14 @@
         var fill = track.appendChild(node('div', 'oa-pj-fill'));
         fill.style.width = Math.round(s.pct * 100) + '%';
         fill.style.background = pace.color;
-        // Where the points should be by now, if the work were spread evenly over office hours.
-        if (s.pace !== 'done' && s.timePct > 0.02 && s.timePct < 1) track.appendChild(node('div', 'oa-pj-mark')).style.left = Math.round(s.timePct * 100) + '%';
+        // The pass mark, and where the points should be by now (towards it) if the work were
+        // spread evenly over office hours.
+        var goalAt = s.pass && p.total ? s.pass / p.total : 1;
+        if (s.pass && p.total) track.appendChild(node('div', 'oa-pj-pass')).style.left = Math.round(goalAt * 100) + '%';
+        if (s.pace !== 'done' && s.pace !== 'passed' && s.timePct > 0.02 && s.timePct < 1) track.appendChild(node('div', 'oa-pj-mark')).style.left = Math.round(s.timePct * goalAt * 100) + '%';
+        if (s.pass) c.appendChild(node('div', 'oa-pj-passnote', p.current >= s.pass
+            ? '已过达标线 ' + s.pass + ' 点，再往上做的每一点都算奖金'
+            : '达标线 ' + s.pass + ' 点（总点数的 ' + Math.round(s.pass / p.total * 100) + '%），还差 ' + (s.pass - p.current) + ' 点'));
         var meta = c.appendChild(node('div', 'oa-pj-meta'));
         meta.appendChild(node('span', null, oaDeadlineText(p, data.env)));
         var people = oaContributors(data, desk, p, !!full);
@@ -440,7 +452,7 @@
             var max = people[0].points;
             people.slice(0, full ? 12 : 4).forEach(function (x) { list.appendChild(oaContributorRow(x, max)); });
         }
-        c.appendChild(node('div', 'oa-foot', full ? '上班时做工作类的事都会给项目加点；竖线是按时完成此刻应到的进度。'
+        c.appendChild(node('div', 'oa-foot', s.pass ? '上班时做工作类的事都会给项目加点。绿线是达标线，细竖线是按时达标此刻应到的进度。'
             : '上班时做工作类的事都会给项目加点。竖线是按时完成此刻应到的进度。'));
         return c;
     }
@@ -1199,7 +1211,7 @@
     // A request left this many game days lapses (lib/company.js LAPSE_DAYS).
     var OA_MG_LAPSE = 2;
     var oaCompany = {};
-    var oaMgmt = { v: 1, byId: {}, seen: {}, pay: {}, offers: {} };
+    var oaMgmt = { v: 1, byId: {}, seen: {}, pay: {}, offers: {}, fire: {} };
     var oaMgTab = 'overview';
     // The executive's colours, set on the element: the light theme's card background would win over a class.
     var OA_EXEC_BG = 'linear-gradient(135deg, #141E36, #2A3F78)';
@@ -1235,7 +1247,10 @@
             seen: r && r.seen && typeof r.seen === 'object' ? r.seen : {},
             pay: r && r.pay && typeof r.pay === 'object' ? r.pay : {},
             hiring: r && r.hiring && typeof r.hiring === 'object' ? r.hiring : null,
-            offers: r && r.offers && typeof r.offers === 'object' ? r.offers : {} };
+            offers: r && r.offers && typeof r.offers === 'object' ? r.offers : {},
+            fire: r && r.fire && typeof r.fire === 'object' ? r.fire : {},
+            secretary: r && r.secretary && typeof r.secretary === 'object' ? r.secretary : null };
+        if (r && r.planOpen && typeof r.planOpen === 'object') oaMgmt.planOpen = r.planOpen;
     }
 
     // The company the member runs, or null.
@@ -1302,7 +1317,7 @@
         if (waiting) head.appendChild(node('span', 'oa-exec-badge', waiting + ' 待审批'));
         if (!seen) c.appendChild(node('div', 'oa-exec-sub', '员工的申请从今天起由你审批，公司的经营也由你负责。'));
         var kpis = node('div', 'oa-hero-kpis');
-        kpis.appendChild(oaHeroKpi(oaMoney(run.cash), '公司现金', run.cash < 0));
+        kpis.appendChild(oaHeroKpi(oaYuan(run.cash), '公司现金', run.cash < 0));
         kpis.appendChild(oaHeroKpi(oaSigned(run.week.profit), '近 7 天利润', run.week.profit < 0));
         kpis.appendChild(oaHeroKpi(String(run.morale), '团队士气', run.morale < 40));
         c.appendChild(kpis);
@@ -1354,7 +1369,8 @@
     var OA_QUEST = {
         sent: { text: '已排进游戏：下次派任务时换成这些', cls: 'move' }, set: { text: '已替换游戏工作任务', cls: 'good' },
         done: { text: '已替换游戏工作任务', cls: 'good' }, failed: { text: '没能写入游戏任务', cls: 'bad' },
-        waiting: { text: '重启游戏后写入任务', cls: 'idle' }
+        waiting: { text: '重启游戏后写入任务', cls: 'idle' },
+        repeat: { text: '这些今天已派过，游戏每项一天只派一次', cls: 'bad' }
     };
 
     function oaPlanStatus(p, now, slots) {
@@ -1475,6 +1491,8 @@
         if (today) { today.className += ' oa-mg-section oa-mg-task-section'; wrap.appendChild(today); }
         var guide = card('公司经营');
         guide.className += ' oa-mg-section oa-mg-money-section';
+        var finBtn = guide.appendChild(node('div', 'oa-ap-actions')).appendChild(node('div', 'oa-ap-btn primary', '查看资金明细与流水'));
+        onTap(finBtn, function (e) { e.stopPropagation(); open('oaFinance'); });
         guide.appendChild(node('div', 'oa-business-line', '现金 = 上期现金 + 员工日常收入 − 工资支出 + 项目回款'));
         var todayRevenue = run.today && typeof run.today.revenue === 'number' ? run.today.revenue : 0;
         var todayPayroll = run.today && typeof run.today.payroll === 'number' ? run.today.payroll : 0;
@@ -1490,13 +1508,14 @@
         if (current && current.total) {
             var project = guide.appendChild(node('div', 'oa-business-project'));
             project.appendChild(node('div', 'oa-business-project-title', '当前项目：' + current.title));
-            project.appendChild(node('div', 'oa-business-project-sub', current.current + ' / ' + current.total + ' 点 · 达标后公司回款 ' + oaMoney(current.income)));
+            project.appendChild(node('div', 'oa-business-project-sub', current.current + ' / ' + current.total + ' 点 · 达标线 ' + current.pass +
+                ' 点 · 达标回款 ' + oaMoney(current.income) + (current.bonusMax ? '，做满最多再 +' + oaMoney(current.bonusMax) : '')));
             var track = project.appendChild(node('div', 'oa-staff-track'));
             var fill = track.appendChild(node('div', 'oa-staff-fill'));
             fill.style.width = Math.min(100, Math.round(current.current / current.total * 100)) + '%';
             fill.style.background = '#0A84FF';
         }
-        guide.appendChild(node('div', 'oa-foot', '员工工作先产生项目点数；项目达到目标点数才算完成并回款，未达标不会产生项目收入。公司现金和家庭余额分开计算。'));
+        guide.appendChild(node('div', 'oa-foot', '员工工作先产生项目点数；到截止时过了达标线（总点数的 70%）就算完成并回款，超过达标线的部分换成奖金，没达标不会产生项目收入。公司现金和家庭余额分开计算。'));
         wrap.appendChild(guide);
         var w = run.week;
         var c = card('经营概况');
@@ -1549,12 +1568,19 @@
         var p = desk.project;
         var card1 = oaProjectCard(data, desk, true);
         if (card1) {
-            var income = run.project && run.project.id === p.id ? run.project.income : p.reward * 2;
+            var mineP = run.project && run.project.id === p.id ? run.project : null;
+            var income = mineP ? mineP.income : p.reward * 2;
             if (income) {
                 var pay = node('div', 'oa-pj-pay');
-                pay.appendChild(node('span', null, '按时完成，公司进账'));
+                pay.appendChild(node('span', null, mineP && mineP.pass ? '到 ' + mineP.pass + ' 点达标，公司进账' : '按时完成，公司进账'));
                 pay.appendChild(node('span', 'oa-pj-pay-num', '+' + oaMoney(income)));
                 card1.insertBefore(pay, card1.lastChild);
+                if (mineP && mineP.bonusMax) {
+                    var extra = node('div', 'oa-pj-pay');
+                    extra.appendChild(node('span', null, (mineP.bonusNow ? '眼下奖金 +' + oaMoney(mineP.bonusNow) + ' · ' : '') + '做满 ' + p.total + ' 点再加'));
+                    extra.appendChild(node('span', 'oa-pj-pay-num', '+' + oaMoney(mineP.bonusMax)));
+                    card1.insertBefore(extra, card1.lastChild);
+                }
             }
             wrap.appendChild(card1);
         } else {
@@ -1571,7 +1597,8 @@
             var who = row.appendChild(node('div', 'ph-who'));
             who.appendChild(node('div', 'oa-req-title', x.title));
             who.appendChild(node('div', 'oa-hist-sub', [typeof x.day === 'number' ? '第 ' + x.day + ' 天' : '', x.current + ' / ' + x.total + ' 点'].filter(Boolean).join(' · ')));
-            row.appendChild(node('span', 'oa-pj-income' + (x.done ? '' : ' none'), x.done ? '+' + oaMoney(x.income) : '未完成'));
+            if (x.done && x.bonus) who.appendChild(node('div', 'oa-hist-sub', '含超额奖金 ' + oaMoney(x.bonus)));
+            row.appendChild(node('span', 'oa-pj-income' + (x.done ? '' : ' none'), x.done ? '+' + oaMoney(x.income) : '未达标'));
         });
         wrap.appendChild(past);
         var list = run.catalogue || [];
@@ -1585,7 +1612,7 @@
                 if (p && p.id === x.id) row.appendChild(node('span', 'ph-pill oa-pill-info', '进行中'));
                 else row.appendChild(node('span', 'oa-pj-income', '+' + oaMoney(x.income)));
             });
-            lib.appendChild(node('div', 'oa-foot', '项目由游戏按公司分派。工期越长、点数越多，回款越高。'));
+            lib.appendChild(node('div', 'oa-foot', '项目由游戏按公司分派。工期越长、点数越多，回款越高；金额是达标回款，做满还能多拿一半。'));
             wrap.appendChild(lib);
         }
     }
@@ -1665,6 +1692,7 @@
         var who = row.appendChild(node('div', 'ph-who'));
         var line = who.appendChild(node('div', 'oa-staff-name'));
         line.appendChild(node('span', null, fullName(t.person)));
+        if (oaSecretaryId(run) === t.id) line.appendChild(node('span', 'oa-staff-pay sec', '秘书'));
         if (st && Math.abs((st.pay || 1) - 1) > 0.005) line.appendChild(node('span', 'oa-staff-pay', '薪 ' + Math.round(st.pay * 100) + '%'));
         if (st && oaPayPlanned(run, t.id) !== null) line.appendChild(node('span', 'oa-staff-pay next', '明日调薪'));
         if (st && st.probation) line.appendChild(node('span', 'oa-staff-pay trial', '试用'));
@@ -1698,7 +1726,7 @@
         var row = c.appendChild(node('div', 'ph-row oa-switch-row'));
         var who = row.appendChild(node('div', 'ph-who'));
         who.appendChild(node('div', 'oa-ap-name', '自动补员'));
-        who.appendChild(node('div', 'oa-ap-meta', on ? '工位空了，游戏会从镇上安排新人，由你审批留不留' : '已冻结招聘：游戏安排进来的人会被直接辞退'));
+        who.appendChild(node('div', 'oa-ap-meta', on ? '工位空了，游戏会从镇上安排新人，由你审批留不留' : '已冻结招聘：游戏不再往公司里安排人，只能你自己招（万一还有漏进来的，会被直接辞退）'));
         var sw = row.appendChild(node('div', 'oa-switch' + (on ? ' on' : '')));
         sw.appendChild(node('div', 'oa-switch-knob'));
         onTap(row, function (e) {
@@ -1909,7 +1937,7 @@
             if (!v || v.same) return;
             oaPaySave(v.id, v.draft / 100);
         });
-        c.appendChild(node('div', 'oa-foot', '公司现金 ' + oaMoney(run.cash) + '。'));
+        c.appendChild(node('div', 'oa-foot', '公司现金 ' + oaYuan(run.cash) + '。'));
         wrap.appendChild(c);
 
         var log = (run.payLog || []).filter(function (x) { return x.id === t.id; }).slice().reverse();
@@ -1925,7 +1953,97 @@
             });
             wrap.appendChild(past);
         }
+        wrap.appendChild(oaSecretaryCard(data, desk, run, t));
+        wrap.appendChild(oaFireCard(run, t, st));
         return wrap;
+    }
+
+    // The secretary (lib/secretary.js): named here (oa-mgmt.cfg secretary: { id, at }), and put in
+    // Texts so the manager can talk to them. The one just named counts until the service says.
+    function oaSecretaryId(run) {
+        var mine = oaMgmt.secretary;
+        var sec = run && run.secretary ? run.secretary : null;
+        if (mine && !(sec && Number(sec.at) >= Number(mine.at)) && Date.now() - Number(mine.at) < 60000) return mine.id ? String(mine.id) : '';
+        return sec && sec.id ? String(sec.id) : '';
+    }
+
+    function oaSecretaryCard(data, desk, run, t) {
+        var c = card('秘书');
+        var isSec = oaSecretaryId(run) === t.id;
+        if (isSec) {
+            c.appendChild(node('div', 'oa-pay-effect', fullName(t.person) + ' 是你的秘书：每天早上发消息汇报公司的钱和经营情况，给你建议；你在聊天里让 TA 辞退谁、给哪位求职者发 offer、找谁谈谈心，TA 会去办，办完来告诉你。'));
+            var log = (run.secretary && run.secretary.log) || [];
+            if (log.length) {
+                var past = c.appendChild(node('div', 'oa-business-rows'));
+                log.slice().reverse().forEach(function (x) {
+                    var row = past.appendChild(node('div', 'oa-business-row'));
+                    row.appendChild(node('span', null, ({ fire: '辞退 ', hire: 'offer：', talk: '谈话：' }[x.do] || '') + x.name));
+                    row.appendChild(node('strong', x.state === 'failed' ? 'bad' : 'plain', x.text || ''));
+                });
+            }
+        } else {
+            c.appendChild(node('div', 'oa-pay-effect', '任命 TA 当秘书：每天汇报财务、给经营建议，还能在聊天里替你办辞退、招聘，找员工谈话。' +
+                (oaSecretaryId(run) ? '现在的秘书会被换下来。' : '')));
+        }
+        var acts = c.appendChild(node('div', 'oa-ap-actions'));
+        if (isSec && t.contact && desk.phoneOk) {
+            var talk = acts.appendChild(node('div', 'oa-ap-btn', '找秘书聊聊'));
+            onTap(talk, function (e) {
+                e.stopPropagation();
+                var go = function () { smsContactId = t.id; open('chat'); };
+                addOutside(data.played, t.contact, '秘书').then(go, go);
+            });
+        }
+        var btn = acts.appendChild(node('div', 'oa-ap-btn' + (isSec ? '' : ' primary'), isSec ? '撤销秘书' : '任命为秘书'));
+        btn.setAttribute('data-id', t.id);
+        onTap(btn, function (e) {
+            e.stopPropagation();
+            var id = btn.getAttribute('data-id');
+            var now = oaSecretaryId(oaRun(desk)) === id;
+            oaMgmt.secretary = { id: now ? '' : id, at: Date.now() };
+            var person = oaStaffOf(desk, id);
+            var after = function () { refresh(); };
+            oaMgSave().then(function () {
+                if (!now && person && person.contact && desk.phoneOk) return addOutside(data.played, person.contact, '秘书');
+            }).then(after, function () { setNote('没保存上，再试一次。', true); });
+        });
+        return c;
+    }
+
+    // Letting someone go (oa-mgmt.cfg fire: { <id>: { at } }; lib/company.js takeFire): asked once
+    // more before it is sent. st.leaving: { state: applying | failed, text } from the service.
+    var oaFireArm = null;
+
+    function oaFireCard(run, t, st) {
+        var c = card('人事');
+        var mine = oaMgmt.fire[t.id];
+        var sent = mine && !(Number(st.leavingAt) >= Number(mine.at));
+        var leaving = st.leaving || null;
+        if (sent || (leaving && leaving.state === 'applying')) {
+            c.appendChild(node('div', 'oa-pay-effect', '正在办理离职，办完后 TA 会离开公司。'));
+            return c;
+        }
+        if (leaving && leaving.state === 'failed') c.appendChild(node('div', 'oa-pay-cost down', '上次没办成：' + (leaving.text || '')));
+        var armed = oaFireArm === t.id;
+        c.appendChild(node('div', 'oa-pay-effect', armed
+            ? '确定辞退 ' + fullName(t.person) + ' 吗？TA 会在游戏里离开公司，其他员工的士气会受点影响。'
+            : '辞退后 TA 会在游戏里离开公司，空出的工位可以再招人。'));
+        var acts = c.appendChild(node('div', 'oa-ap-actions'));
+        if (armed) {
+            var back = acts.appendChild(node('div', 'oa-ap-btn', '再想想'));
+            onTap(back, function (e) { e.stopPropagation(); oaFireArm = null; refresh(); });
+        }
+        var go = acts.appendChild(node('div', 'oa-ap-btn' + (armed ? ' danger' : ''), armed ? '确认辞退' : '辞退'));
+        go.setAttribute('data-id', t.id);
+        onTap(go, function (e) {
+            e.stopPropagation();
+            var id = go.getAttribute('data-id');
+            if (oaFireArm !== id) { oaFireArm = id; refresh(); return; }
+            oaFireArm = null;
+            oaMgmt.fire[id] = { at: Date.now() };
+            oaMgSave().then(refresh, function () { setNote('没保存上，再试一次。', true); });
+        });
+        return c;
     }
 
     // ----- 招聘: résumés from town and offers (lib/recruit.js) -----
@@ -2115,6 +2233,156 @@
         return wrap;
     }
 
+    // ----- 资金: the company's books (lib/company.js book: run.ledger, newest last) -----
+    // Every amount in full, never in 万.
+    var OA_FIN_KINDS = {
+        start: { mark: '始', color: '#64D2FF', label: '启动资金' },
+        open: { mark: '账', color: '#8E8E93', label: '开始记账' },
+        revenue: { mark: '收', color: '#30D158', label: '员工日常收入' },
+        payroll: { mark: '薪', color: '#FF9F0A', label: '工资' },
+        project: { mark: '项', color: '#5E5CE6', label: '项目回款' },
+        bonus: { mark: '奖', color: '#BF5AF2', label: '超额奖金' },
+        correction: { mark: '正', color: '#FF453A', label: '更正' }
+    };
+    var OA_FIN_ORDER = ['revenue', 'project', 'bonus', 'start', 'payroll', 'correction'];
+    var oaFinRange = 'week';
+    var oaFinFilter = 'all';
+    var oaFinOpen = {};
+
+    // 48213 -> "48,213"; signed: "+48,213" / "-48,213".
+    function oaYuan(n, signed) {
+        n = Math.round(Number(n) || 0);
+        var s = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        return (n < 0 ? '-' : signed && n > 0 ? '+' : '') + s;
+    }
+
+    function oaFinName(run, desk, id) {
+        var t = oaStaffOf(desk, id);
+        if (t && t.person) return fullName(t.person);
+        return (run.names && run.names[id]) || '员工 ' + id;
+    }
+
+    // The entries of the period: today (the last game day in the books), the last 7 days, or all.
+    function oaFinEntries(run) {
+        var list = (run.ledger || []).filter(function (e) { return e.kind !== 'open'; });
+        if (oaFinRange === 'all') return list;
+        var last = typeof run.lastDay === 'number' ? run.lastDay : null;
+        list.forEach(function (e) { if (typeof e.day === 'number' && (last === null || e.day > last)) last = e.day; });
+        if (last === null) return list;
+        var from = oaFinRange === 'today' ? last : last - 6;
+        return list.filter(function (e) { return typeof e.day === 'number' && e.day >= from; });
+    }
+
+    function oaFinSeg(items, now, set) {
+        var seg = node('div', 'oa-fin-seg');
+        items.forEach(function (x) {
+            var item = seg.appendChild(node('div', 'oa-fin-seg-item' + (now === x[0] ? ' on' : ''), x[1]));
+            onTap(item, function (e) { e.stopPropagation(); set(x[0]); refresh(); });
+        });
+        return seg;
+    }
+
+    function renderOaFinance(data) {
+        var wrap = node('div', 'oa-screen');
+        wrap.appendChild(subHeader('oaFinance'));
+        var desk = data.desk;
+        var run = oaRun(desk);
+        if (!run) return oaNotice(wrap, '只有管理公司的人才能看公司资金。');
+        var ledger = run.ledger || [];
+
+        var hero = node('div', 'ph-card oa-fin-hero');
+        hero.style.background = OA_EXEC_BG;
+        hero.appendChild(node('div', 'oa-exec-kicker', run.company + ' · 公司现金'));
+        hero.appendChild(node('div', 'oa-fin-cash' + (run.cash < 0 ? ' bad' : ''), oaYuan(run.cash)));
+        var first = ledger.length ? ledger[0] : null;
+        hero.appendChild(node('div', 'oa-fin-since', [typeof run.lastDay === 'number' ? '截至第 ' + run.lastDay + ' 天' : '',
+            first && typeof first.day === 'number' ? '第 ' + first.day + ' 天开始记账' : ''].filter(Boolean).join(' · ')));
+        wrap.appendChild(hero);
+
+        // The period: totals by kind.
+        var sum = card('收支汇总');
+        sum.appendChild(oaFinSeg([['today', '今天'], ['week', '近 7 天'], ['all', '全部记录']], oaFinRange, function (v) { oaFinRange = v; }));
+        var entries = oaFinEntries(run);
+        var byKind = {};
+        var inSum = 0;
+        var outSum = 0;
+        entries.forEach(function (e) {
+            byKind[e.kind] = (byKind[e.kind] || 0) + e.amount;
+            if (e.amount > 0) inSum += e.amount; else outSum += e.amount;
+        });
+        var tiles = sum.appendChild(node('div', 'oa-tiles'));
+        tiles.appendChild(oaMgTile('收入', oaYuan(inSum, true), '', 'good'));
+        tiles.appendChild(oaMgTile('支出', oaYuan(outSum), '', outSum < 0 ? 'bad' : ''));
+        tiles.appendChild(oaMgTile('净变化', oaYuan(inSum + outSum, true), '', inSum + outSum < 0 ? 'bad' : inSum + outSum > 0 ? 'good' : ''));
+        var rows = sum.appendChild(node('div', 'oa-business-rows'));
+        var any = false;
+        OA_FIN_ORDER.forEach(function (k) {
+            if (!byKind[k]) return;
+            any = true;
+            var row = rows.appendChild(node('div', 'oa-business-row'));
+            row.appendChild(node('span', null, OA_FIN_KINDS[k].label));
+            row.appendChild(node('strong', byKind[k] < 0 ? 'bad' : '', oaYuan(byKind[k], true)));
+        });
+        if (!any) rows.appendChild(node('div', 'oa-empty', '这段时间还没有进出账。'));
+        wrap.appendChild(sum);
+
+        // Wages now, by person (the last payday).
+        var pay = null;
+        for (var i = ledger.length - 1; i >= 0; i--) if (ledger[i].kind === 'payroll') { pay = ledger[i]; break; }
+        if (pay && pay.lines) {
+            var wc = card('每日工资 · 第 ' + pay.day + ' 天');
+            pay.lines.slice().sort(function (a, b) { return a.amount - b.amount; }).forEach(function (l) {
+                var row = wc.appendChild(node('div', 'oa-business-row'));
+                row.appendChild(node('span', null, oaFinName(run, desk, l.id) + (l.pay && Math.abs(l.pay - 1) > 0.004 ? '（' + Math.round(l.pay * 1000) / 10 + '%）' : '')));
+                row.appendChild(node('strong', 'plain', oaYuan(-l.amount)));
+            });
+            var total = wc.appendChild(node('div', 'oa-business-row oa-fin-total'));
+            total.appendChild(node('span', null, '合计'));
+            total.appendChild(node('strong', 'plain', oaYuan(-pay.amount)));
+            wc.appendChild(node('div', 'oa-foot', '括号里是调过的薪酬比例。工资每天从公司现金里扣。'));
+            wrap.appendChild(wc);
+        }
+
+        // The books, newest first.
+        var flow = card('资金流水');
+        flow.appendChild(oaFinSeg([['all', '全部'], ['in', '收入'], ['out', '支出']], oaFinFilter, function (v) { oaFinFilter = v; }));
+        var shown = entries.slice().reverse().filter(function (e) {
+            return oaFinFilter === 'all' || (oaFinFilter === 'in' ? e.amount > 0 : e.amount < 0);
+        });
+        if (!shown.length) flow.appendChild(node('div', 'oa-empty', '这段时间没有这类记录。'));
+        shown.forEach(function (e) {
+            var kind = OA_FIN_KINDS[e.kind] || OA_FIN_KINDS.correction;
+            var row = flow.appendChild(node('div', 'ph-row oa-hist oa-fin-row'));
+            row.setAttribute('data-id', e.id);
+            row.appendChild(oaMark(kind.mark, kind.color, 'oa-req-mark'));
+            var who = row.appendChild(node('div', 'ph-who'));
+            who.appendChild(node('div', 'oa-req-title', e.text || kind.label));
+            who.appendChild(node('div', 'oa-hist-sub', [typeof e.day === 'number' ? '第 ' + e.day + ' 天' : '', '余额 ' + oaYuan(e.balance),
+                e.lines && e.lines.length ? (oaFinOpen[e.id] ? '收起' : e.lines.length + ' 人明细 ›') : ''].filter(Boolean).join(' · ')));
+            row.appendChild(node('span', 'oa-fin-amt' + (e.amount < 0 ? ' out' : ''), oaYuan(e.amount, true)));
+            if (e.lines && e.lines.length) {
+                onTap(row, function (ev) {
+                    ev.stopPropagation();
+                    var id = row.getAttribute('data-id');
+                    oaFinOpen[id] = !oaFinOpen[id];
+                    refresh();
+                });
+                if (oaFinOpen[e.id]) {
+                    var box = flow.appendChild(node('div', 'oa-fin-lines'));
+                    e.lines.slice().sort(function (a, b) { return Math.abs(b.amount) - Math.abs(a.amount); }).forEach(function (l) {
+                        var r = box.appendChild(node('div', 'oa-business-row'));
+                        r.appendChild(node('span', null, oaFinName(run, desk, l.id)));
+                        r.appendChild(node('strong', l.amount < 0 ? 'bad' : '', oaYuan(l.amount, true)));
+                    });
+                }
+            }
+        });
+        flow.appendChild(node('div', 'oa-foot', '员工日常收入按每人的绩效、士气算，工资按职级基本工资和调过的比例算；手机上显示最近 ' +
+            (ledger.length) + ' 笔，服务最多保留 ' + (run.ledgerKept || 300) + ' 笔。'));
+        wrap.appendChild(flow);
+        return wrap;
+    }
+
     // ----- the page -----
 
     function oaMgHead(desk, run) {
@@ -2123,8 +2391,9 @@
         c.appendChild(node('div', 'oa-exec-kicker', '管理台 · ' + desk.rankName));
         c.appendChild(node('div', 'oa-mg-company', run.company));
         var money = c.appendChild(node('div', 'oa-mg-money'));
-        money.appendChild(node('span', 'oa-mg-cash', oaMoney(run.cash)));
-        money.appendChild(node('span', 'oa-mg-cash-label', '公司现金'));
+        money.appendChild(node('span', 'oa-mg-cash', oaYuan(run.cash)));
+        money.appendChild(node('span', 'oa-mg-cash-label', '公司现金 · 资金明细 ›'));
+        onTap(money, function (e) { e.stopPropagation(); open('oaFinance'); });
         money.appendChild(node('span', 'oa-mg-delta' + (run.week.profit < 0 ? ' bad' : ''), '近 7 天 ' + oaSigned(run.week.profit)));
         c.appendChild(node('div', 'oa-mg-since', desk.team.length + ' 名员工' + (typeof run.appointedDay === 'number' ? ' · 第 ' + run.appointedDay + ' 天上任' : '')));
         var waiting = oaMgWaiting(run).length;

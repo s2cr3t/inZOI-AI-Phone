@@ -23,6 +23,7 @@
 --   [HouseholdJournal] R <boot>,<seq>,<ok|fail>,<actor>,<a|c>,<detail>
 
 ---@class FreelanceServer
+local Once = require("HJOnce")
 local M = {}
 
 local TAG = "[HouseholdJournal] "
@@ -269,6 +270,7 @@ end
 ---@param owner FB2Character
 function M.on_lua_message(self, owner, ...)
     local args = { ... }
+    if Once.repeated("FreelanceServer", owner, args) then return end
     for i = 1, #args do
         if args[i] == MESSAGE then
             local content = tostring(args[i + 1] or "")

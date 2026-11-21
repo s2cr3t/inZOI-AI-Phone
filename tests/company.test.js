@@ -181,27 +181,186 @@ test('someone gone without the manager is told and waits for them; someone let g
     fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('an early project shutdown below its target fails, and an old false success is corrected once', async () => {
+test('a project is done at its pass mark, points past it are a bonus, below it fails; an old false success is corrected once', async () => {
     const { root, c } = setup();
-    await c.tick('1', desk({ project: { id: 'X', current: 80, total: 100, active: true, reward: 400, contributions: {} } }), { day: 10 });
-    await c.tick('1', desk({ project: { id: 'X', current: 80, total: 100, active: false, reward: 400, contributions: {} } }), { day: 11 });
+    const pj = (id, current, active) => ({ project: { id, current, total: 100, active, reward: 400, contributions: {} } });
+    await c.tick('1', desk(pj('X', 60, true)), { day: 10 });
+    assert.equal(view(root).project.pass, 70);
+    assert.equal(view(root).project.income, 800);
+    assert.equal(view(root).project.bonusMax, 400);
+    await c.tick('1', desk(pj('X', 60, false)), { day: 11 });
     let v = view(root);
-    assert.equal(v.projectLog[0].done, false);
+    assert.equal(v.projectLog[0].done, false, 'below the pass mark');
     assert.equal(v.projectLog[0].income, 0);
+    await c.tick('1', desk(pj('Y', 85, true)), { day: 12 });
+    await c.tick('1', desk(pj('Y', 85, false)), { day: 13 });
+    v = view(root);
+    // Every change of the cash is in the books, each with the balance after it.
+    const kinds = v.ledger.map((e) => e.kind);
+    assert.equal(kinds[0], 'start');
+    assert.ok(kinds.indexOf('revenue') > 0 && kinds.indexOf('payroll') > 0);
+    assert.deepEqual(kinds.slice(-2), ['project', 'bonus']);
+    assert.deepEqual(v.ledger.slice(-2).map((e) => e.amount), [800, 200]);
+    assert.equal(v.ledger[v.ledger.length - 1].balance, c.data.byCompany['900'].cash);
+    for (let i = 1; i < v.ledger.length; i++) assert.equal(v.ledger[i].balance, v.ledger[i - 1].balance + v.ledger[i].amount, 'balances add up');
+    const wages = v.ledger.find((e) => e.kind === 'payroll');
+    assert.equal(wages.lines.reduce((s, l) => s + l.amount, 0), wages.amount, 'by person, adding up');
+    assert.equal(v.projectLog[1].done, true, 'past the pass mark');
+    assert.equal(v.projectLog[1].bonus, 200, 'half the way from the mark to all the points: half the bonus');
+    assert.equal(v.projectLog[1].income, 1000);
 
     fs.rmSync(root, { recursive: true, force: true });
     const oldRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'company-old-'));
     fs.mkdirSync(path.join(oldRoot, 'data'), { recursive: true });
     fs.writeFileSync(path.join(oldRoot, 'data', 'company.json'), JSON.stringify({ v: 1, byCompany: {
         '900': { manager: '1', name: '星河科技', cash: 15000, staff: {}, requests: [], history: [],
-            projectLog: [{ id: 'X', current: 80, total: 100, done: true, income: 800 }] }
+            projectLog: [{ id: 'X', current: 60, total: 100, done: true, income: 800 }, { id: 'Y', current: 80, total: 100, done: true, income: 800 }] }
     } }));
     const d = setup().c.d;
     const fixed = new Company(d);
     fixed.configure(path.join(oldRoot, 'data'), path.join(oldRoot, 'phone'));
     assert.equal(fixed.data.byCompany['900'].cash, 14200);
     assert.equal(fixed.data.byCompany['900'].projectLog[0].done, false);
+    assert.equal(fixed.data.byCompany['900'].projectLog[1].done, true, 'past the pass mark: kept');
     fixed.configure(path.join(oldRoot, 'data'), path.join(oldRoot, 'phone'));
     assert.equal(fixed.data.byCompany['900'].cash, 14200);
     fs.rmSync(oldRoot, { recursive: true, force: true });
+});
+
+test('let go by the game with no job to go to: called back at once', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'company-'));
+    let roster = desk().roster;
+    const joins = [];
+    const daemon = {
+        log: { info() {}, warn() {}, error() {} },
+        game: {
+            soft: async (n, a) => n === 'career_get_work_status' ? { has_job: a.entity_id !== '12' ? true : false } : null,
+            call: async (n, a) => { if (n === 'career_join') { joins.push(a.entity_id); roster = roster.concat([{ id: a.entity_id, rank: 1 }]); } }
+        },
+        career: { fresh: async () => ({ roster, jobId: 'Co_1' }), request: (actor, op, arg, done) => done({ ok: true, detail: 'ok' }) },
+        world: { characterInfo: async (id) => ({ last_name: '李', first_name: 'n' + id }) }
+    };
+    const c = new Company(daemon);
+    c.configure(path.join(root, 'data'), path.join(root, 'phone'));
+    c.rand = () => 0.99;
+    await c.tick('1', desk(), { day: 10 });
+    roster = [{ id: '11', rank: 2 }, { id: '1', rank: 5 }];
+    const only11 = desk({ staff: [{ id: '11', rank: 2, evaluation: 80 }], roster });
+    await c.tick('1', only11, { day: 10 });
+    await c.tick('1', only11, { day: 10 });
+    await new Promise((res) => setTimeout(res, 1700));
+    const gone = view(root).requests.find((r) => r.kind === 'gone');
+    assert.deepEqual(joins, ['12']);
+    assert.equal(gone.status, 'approved');
+    assert.ok(c.data.byCompany['900'].staff['12'], 'on the payroll again');
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('let go from the phone: asked of the played character, out of the company, the rest a little shaken', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'company-'));
+    let roster = desk().roster;
+    const asked = [];
+    const daemon = {
+        log: { info() {}, warn() {}, error() {} },
+        game: { soft: async () => null, call: async () => null },
+        journal: { can: (f) => f === 'dismiss' },
+        career: {
+            fresh: async () => ({ roster }),
+            request: (actor, op, arg, done) => { asked.push(actor + ' ' + op + ' ' + arg); roster = roster.filter((p) => p.id !== arg.split('/')[1]); done({ ok: true, detail: 'dismissed' }); }
+        },
+        world: { characterInfo: async (id) => ({ last_name: '李', first_name: 'n' + id }) }
+    };
+    const c = new Company(daemon);
+    c.configure(path.join(root, 'data'), path.join(root, 'phone'));
+    c.rand = () => 0.99;
+    await c.tick('1', desk(), { day: 10 });
+    const before = c.data.byCompany['900'].staff['11'].morale;
+    fs.mkdirSync(path.join(root, 'phone', 'saved'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'phone', 'saved', 'oa-mgmt.cfg'), JSON.stringify({ v: 1, byId: {}, fire: { 12: { at: Date.now() } } }));
+    c.poll();
+    await new Promise((res) => setTimeout(res, 50));
+    assert.deepEqual(asked, ['1 x 900/12']);
+    const co = c.data.byCompany['900'];
+    assert.ok(!co.firing['12'], 'done');
+    assert.equal(co.staff['11'].morale, before - 3);
+    assert.equal(co.fireLog[0].id, '12');
+    await c.tick('1', desk({ staff: [{ id: '11', rank: 2, evaluation: 80 }], roster }), { day: 10 });
+    assert.ok(!co.staff['12'], 'off the payroll');
+    assert.ok(!co.requests.some((r) => r.kind === 'gone'), 'not taken for a departure without the manager');
+    // Under way when the service stopped: failed on the next start, so it can be asked again.
+    co.firing['11'] = { state: 'applying', text: '正在办理离职' };
+    c.save();
+    const c2 = new Company(daemon);
+    c2.configure(path.join(root, 'data'), path.join(root, 'phone'));
+    assert.equal(c2.data.byCompany['900'].firing['11'].state, 'failed');
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('auto-fill off: the game keeps no rank filled, so it hires nobody; on again, as it was', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'company-'));
+    const counts = [1, 2, 1, 1];
+    const daemon = {
+        log: { info() {}, warn() {}, error() {} },
+        game: {
+            soft: async (n, a) => {
+                if (n === 'data_table_get' && a.Alias === 'Career') {
+                    return { unexcusedAbsenceScriptId: 'None', organizations: [{ rankList: counts.map((x) => ({ shift: { crowdAutoFillCount: x } })) }] };
+                }
+                if (n === 'data_patch') {
+                    const m = /RankList\[(\d+)\]\.Shift\.CrowdAutoFillCount$/.exec(a.Query);
+                    if (m) { counts[Number(m[1])] = Number(a.Value); return { result: 'Applied' }; }
+                }
+                return null;
+            },
+            call: async () => null
+        },
+        career: { fresh: async () => null, request: (x, o, g, done) => done({ ok: false }) },
+        world: { characterInfo: async () => null }
+    };
+    const c = new Company(daemon);
+    c.configure(path.join(root, 'data'), path.join(root, 'phone'));
+    c.rand = () => 0.99;
+    await c.tick('1', desk({ careerDtId: 'Co' }), { day: 10 });
+    assert.deepEqual(counts, [1, 2, 1, 1], 'auto-fill on: left as the game has it');
+    c.data.byCompany['900'].autoHire = false;
+    await c.tick('1', desk({ careerDtId: 'Co' }), { day: 10 });
+    assert.deepEqual(counts, [0, 0, 0, 0]);
+    await c.tick('1', desk({ careerDtId: 'Co' }), { day: 10 });
+    assert.deepEqual(counts, [0, 0, 0, 0], 'still off, the numbers it had kept');
+    c.data.byCompany['900'].autoHire = true;
+    await c.tick('1', desk({ careerDtId: 'Co' }), { day: 10 });
+    assert.deepEqual(counts, [1, 2, 1, 1]);
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('while the player runs it, the game fires nobody for absence: told instead, and the rule put back after', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'company-'));
+    const row = { unexcusedAbsenceScriptId: 'AddBuff_Career_Fired' };
+    const daemon = {
+        log: { info() {}, warn() {}, error() {} },
+        game: {
+            soft: async (n, a) => {
+                if (n === 'data_table_get' && a.Alias === 'Career') return Object.assign({}, row);
+                if (n === 'data_patch') { row.unexcusedAbsenceScriptId = a.Value; return { result: 'Applied' }; }
+                return null;
+            },
+            call: async () => null
+        },
+        career: { fresh: async () => null, request: (a, o, g, done) => done({ ok: false }) },
+        world: { characterInfo: async (id) => ({ last_name: '李', first_name: 'n' + id }) }
+    };
+    const toasts = [];
+    const c = new Company(daemon);
+    c.configure(path.join(root, 'data'), path.join(root, 'phone'));
+    c.toast = (t) => toasts.push(t);
+    c.rand = () => 0.99;
+    await c.tick('1', desk({ careerDtId: 'Co' }), { day: 10 });
+    assert.equal(row.unexcusedAbsenceScriptId, 'None');
+    await c.tick('1', desk({ careerDtId: 'Co', staff: [{ id: '11', rank: 2, evaluation: 80 }, { id: '12', rank: 1, evaluation: 50, unexcused: 1 }] }), { day: 10 });
+    await new Promise((res) => setTimeout(res, 20));
+    assert.ok(toasts.some((t) => t.indexOf('无故缺勤') >= 0));
+    await c.tick('1', desk({ careerDtId: 'Co', rank: 4, hasNext: true }), { day: 10 });
+    await new Promise((res) => setTimeout(res, 20));
+    assert.equal(row.unexcusedAbsenceScriptId, 'AddBuff_Career_Fired');
+    fs.rmSync(root, { recursive: true, force: true });
 });

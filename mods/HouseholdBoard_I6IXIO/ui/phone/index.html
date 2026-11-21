@@ -322,6 +322,25 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 .oa-business-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px; color: #ebebf5; }
 .oa-business-row strong { color: #30D158; }
 .oa-business-row strong.bad { color: #FF453A; }
+.oa-fin-hero { padding: 16px; }
+.oa-fin-cash { margin-top: 6px; font-size: 34px; font-weight: bold; line-height: 38px; color: #ffffff; }
+.oa-fin-cash.bad { color: #FF6961; }
+.oa-fin-since { margin-top: 4px; font-size: 12px; color: rgba(255, 255, 255, 0.7); }
+.oa-fin-seg { display: flex; flex-wrap: nowrap; margin: 2px 0 10px 0; padding: 3px; border-radius: 9px; background: rgba(255, 255, 255, 0.08); }
+.oa-fin-seg-item { width: 33.33%; height: 28px; border-radius: 7px; font-size: 13px; font-weight: bold; line-height: 28px; text-align: center; color: rgba(235, 235, 245, 0.7); cursor: pointer; }
+.oa-fin-seg-item.on { background: #0A84FF; color: #ffffff; }
+.oa-fin-row { cursor: pointer; }
+.oa-fin-amt { flex-shrink: 0; margin-left: 8px; font-size: 14px; font-weight: bold; white-space: nowrap; color: #30D158; }
+.oa-fin-amt.out { color: #FF453A; }
+.oa-fin-lines { margin: 0 0 6px 44px; padding: 2px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); }
+.oa-fin-total { font-weight: bold; }
+.oa-business-row strong.plain { color: inherit; }
+#app-root.theme-light .oa-fin-seg { background: rgba(0, 0, 0, 0.05); }
+#app-root.theme-light .oa-fin-seg-item { color: #6c6c70; }
+#app-root.theme-light .oa-fin-seg-item.on { background: #007AFF; color: #ffffff; }
+#app-root.theme-light .oa-fin-amt { color: #248A3D; }
+#app-root.theme-light .oa-fin-amt.out { color: #D70015; }
+#app-root.theme-light .oa-fin-lines { background: rgba(0, 0, 0, 0.04); }
 .oa-business-project { margin-top: 10px; padding: 9px; border-radius: 10px; background: rgba(10,132,255,0.1); }
 .oa-business-project-title { font-size: 13px; font-weight: bold; color: #f5f5f7; }
 .oa-business-project-sub { margin-top: 4px; font-size: 12px; color: #8e8e93; }
@@ -493,6 +512,7 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 .oa-ap-btn { flex: 1; height: 36px; border-radius: 10px; background: rgba(255, 255, 255, 0.1); font-size: 14px; font-weight: bold; line-height: 36px; text-align: center; color: #f5f5f7; cursor: pointer; }
 .oa-ap-btn + .oa-ap-btn { margin-left: 10px; }
 .oa-ap-btn.primary { background: #0A84FF; color: #ffffff; }
+.oa-ap-btn.danger { background: #FF453A; color: #ffffff; }
 .oa-ap-btn:active { opacity: 0.7; }
 .oa-ap-sent { margin-top: 10px; font-size: 13px; color: #FF9F0A; }
 .oa-hist { padding: 10px 0; }
@@ -513,6 +533,8 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 .oa-pj-track { position: relative; height: 8px; margin-top: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.1); }
 .oa-pj-fill { position: absolute; top: 0; left: 0; height: 8px; border-radius: 4px; }
 .oa-pj-mark { position: absolute; top: -3px; width: 2px; height: 14px; margin-left: -1px; border-radius: 1px; background: #f5f5f7; }
+.oa-pj-pass { position: absolute; top: -4px; width: 3px; height: 16px; margin-left: -1.5px; border-radius: 1.5px; background: #30D158; }
+.oa-pj-passnote { margin-top: 6px; font-size: 12px; color: #30D158; }
 .oa-pj-meta { display: flex; margin-top: 8px; font-size: 12px; color: #8e8e93; }
 .oa-pj-meta span { flex: 1; }
 .oa-pj-meta .oa-pj-mine { flex: 0 0 auto; font-weight: bold; color: #c7c7cc; }
@@ -540,6 +562,8 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 #app-root.theme-light .oa-pj-list { border-color: rgba(0, 0, 0, 0.07); }
 #app-root.theme-light .oa-pj-pay { background: rgba(52, 199, 89, 0.12); }
 #app-root.theme-light .oa-pj-pay .oa-pj-pay-num, #app-root.theme-light .oa-pj-income { color: #248A3D; }
+#app-root.theme-light .oa-pj-income.none { color: #D70015; }
+#app-root.theme-light .oa-pj-passnote { color: #248A3D; }
 #app-root.theme-light .oa-pj-pts.none { color: #C93400; }
 /* One employee and their pay. */
 .oa-staff-top .ph-avatar { width: 48px; height: 48px; margin-right: 12px; border-radius: 24px; line-height: 48px; font-size: 18px; }
@@ -573,6 +597,8 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 .oa-cv-val { font-size: 14px; font-weight: bold; color: #f5f5f7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .oa-cv-label { margin-top: 2px; font-size: 11px; color: #8e8e93; }
 .oa-staff-pay.trial { background: rgba(100, 210, 255, 0.18); color: #64D2FF; }
+.oa-staff-pay.sec { background: rgba(245, 196, 81, 0.18); color: #F5C451; }
+#app-root.theme-light .oa-staff-pay.sec { background: rgba(196, 140, 0, 0.14); color: #9A6B00; }
 .oa-switch-row { cursor: pointer; }
 .oa-switch-row .oa-ap-meta { white-space: normal; line-height: 16px; }
 .oa-switch { position: relative; flex-shrink: 0; width: 46px; height: 28px; margin-left: 10px; border-radius: 14px; background: rgba(120, 120, 128, 0.32); }
@@ -658,6 +684,7 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 #app-root.theme-light .oa-tile-val.bad { color: #D70015; }
 #app-root.theme-light .oa-ap-btn { background: #e5e5ea; color: #1c1c1e; }
 #app-root.theme-light .oa-ap-btn.primary { background: #007AFF; color: #ffffff; }
+#app-root.theme-light .oa-ap-btn.danger { background: #FF3B30; color: #ffffff; }
 #app-root.theme-light .oa-stack, #app-root.theme-light .oa-staff-track { background: rgba(0, 0, 0, 0.08); }
 #app-root.theme-light .oa-hist-sub.oa-eff-good { color: #248A3D; }
 #app-root.theme-light .oa-ap-sent { color: #C93400; }
@@ -2288,6 +2315,8 @@ button, input, select, textarea { font-family: var(--inzoi-font-ui); font-size: 
 .sms-lover { display: inline-block; margin: 3px auto 0 auto; padding: 1px 8px; border-radius: 9px; background: rgba(255, 55, 95, 0.16);
     color: #FF375F; font-size: 11px; font-weight: bold; line-height: 16px; }
 .sms-lover.inline { flex-shrink: 0; margin: 0 0 0 8px; }
+.sms-lover.sec { background: rgba(245, 196, 81, 0.18); color: #F5C451; }
+#app-root.theme-light .sms-lover.sec { background: rgba(196, 140, 0, 0.14); color: #9A6B00; }
 .sms-hint { display: table; margin: 4px 0 2px 4px; padding: 2px 8px; border-radius: 9px; background: rgba(191, 90, 242, 0.16);
     font-size: 11px; font-weight: bold; color: #BF5AF2; cursor: pointer; }
 .sms-hint:active { opacity: 0.6; }

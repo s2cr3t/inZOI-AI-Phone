@@ -31,6 +31,7 @@
 --   stage: queued | out | served | fail
 
 ---@class MealServer
+local Once = require("HJOnce")
 local M = {}
 
 local TAG = "[HouseholdJournal] "
@@ -442,6 +443,7 @@ end
 ---@param owner FB2Character
 function M.on_lua_message(self, owner, ...)
     local args = { ... }
+    if Once.repeated("MealServer", owner, args) then return end
     for i = 1, #args do
         if args[i] == MESSAGE then
             local ok, err = pcall(accept, owner, args[i + 1])

@@ -10,6 +10,7 @@
 --   detail: set | flipped | same | full | not_set | no_component | error_...
 
 ---@class PreferenceSetter
+local Once = require("HJOnce")
 local M = {}
 
 local TAG = "[HouseholdJournal] "
@@ -82,6 +83,7 @@ end
 ---@param owner FB2Character
 function M.on_lua_message(self, owner, ...)
     local args = { ... }
+    if Once.repeated("PreferenceSetter", owner, args) then return end
     for i = 1, #args do
         if args[i] == MESSAGE then
             local content = tostring(args[i + 1] or "")

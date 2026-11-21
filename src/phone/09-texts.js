@@ -285,6 +285,23 @@
         return '';
     }
 
+    // The secretary of the company the played character runs (lib/secretary.js), marked in Texts
+    // and on the chat like a lover: the OA company view (ui/phone/oa/company.cfg, oaMgRead).
+    function loadSecretaries() {
+        return cachedRead('oa-company', 5000, function () {
+            return Promise.all([cfgValue(OA_SECTION, 'company'), cfgValue(SOUND_SECTION, OA_MGMT_KEY)]).then(function (r) {
+                oaMgRead(r[0]);
+                oaMgReadMine(r[1]);
+            }, function () {});
+        });
+    }
+
+    function secretaryTag(meId, m) {
+        if (!m) return '';
+        var run = oaCompany[String(meId)];
+        return run && typeof run === 'object' && oaSecretaryId(run) === String(m.entity_id) ? '秘书' : '';
+    }
+
     function answerSuitor(meId, rec, answer) {
         suitorAnswers[rec.id] = { answer: answer, at: Date.now() };
         var ids = Object.keys(suitorAnswers).sort(function (a, b) { return (suitorAnswers[b].at || 0) - (suitorAnswers[a].at || 0); });
@@ -1807,7 +1824,7 @@
 
     function loadTexts() {
         return watchClear().then(function () {
-            return Promise.all([getEnv(), getPossessedId(), getMembers(), loadPortraitIndex(), loadEmojiSet(), loadOutside(), loadSuitor()]);
+            return Promise.all([getEnv(), getPossessedId(), getMembers(), loadPortraitIndex(), loadEmojiSet(), loadOutside(), loadSuitor(), loadSecretaries()]);
         }).then(function (r) {
             return Promise.all([loadSmsIndex(String(r[1])), loadTxFolders(String(r[1]))]).then(function (x) { r.push(x[0]); return r; });
         }).then(function (r) {
@@ -1906,6 +1923,8 @@
             joinWithDots(sub, [m.relationship_label || m.age_group_text]);
             var lover = loverTag(data.meId, m, data.members || []);
             if (lover) sub.appendChild(node('span', 'sms-lover inline', '\u2665 ' + lover));
+            var sec = secretaryTag(data.meId, m);
+            if (sec) sub.appendChild(node('span', 'sms-lover inline sec', '\u2605 ' + sec));
             var pres = node('span', 'sms-presence inline ' + p.cls, p.text);
             sub.appendChild(pres);
             var heartLine = p.fresh ? heartText(row.status) : '';
@@ -1936,7 +1955,7 @@
     function loadChat() {
         var followPlayed = refreshDropping;
         return watchClear().then(function () {
-            return Promise.all([getEnv(), getPossessedId(), getMembers(), loadPortraitIndex(), loadEmojiSet(), loadOutside(), loadSuitor()]);
+            return Promise.all([getEnv(), getPossessedId(), getMembers(), loadPortraitIndex(), loadEmojiSet(), loadOutside(), loadSuitor(), loadSecretaries()]);
         }).then(function (r) {
             var meId = String(r[1]);
             var members = r[2];
@@ -2050,6 +2069,8 @@
         peer.appendChild(node('div', 'sms-peer-name', fullName(data.contact) + ' \u203A'));
         var loverWord = loverTag(data.meId, data.contact, smsMembersSeen);
         if (loverWord) peer.appendChild(node('div', 'sms-lover', '\u2665 ' + loverWord));
+        var secWord = secretaryTag(data.meId, data.contact);
+        if (secWord) peer.appendChild(node('div', 'sms-lover sec', '\u2605 ' + secWord));
         var pres = node('div', 'sms-presence off', L('Offline'));
         pres.id = 'sms-presence';
         peer.appendChild(pres);

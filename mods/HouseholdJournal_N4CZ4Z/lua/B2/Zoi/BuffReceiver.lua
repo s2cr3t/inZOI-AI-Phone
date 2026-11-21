@@ -16,6 +16,7 @@
 -- ok with why "initiator_<id>" means the game kept a different initiator than the one asked for.
 
 ---@class BuffReceiver
+local Once = require("HJOnce")
 local M = {}
 
 local TAG = "[HouseholdJournal] "
@@ -117,6 +118,7 @@ end
 ---@param owner FB2Character
 function M.on_lua_message(self, owner, ...)
     local args = { ... }
+    if Once.repeated("BuffReceiver", owner, args) then return end
     for i = 1, #args do
         if args[i] == ADD then return addBuff(owner, args[i + 1]) end
         if args[i] == CHECK then return checkBuff(owner, args[i + 1]) end
